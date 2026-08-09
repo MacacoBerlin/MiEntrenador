@@ -1,0 +1,1311 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+<title>Analiza tu carrera</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin:0; padding:0; background:#12151B; }
+  input[type="file"] { display:none; }
+  .raa-fade { animation: raaFade .5s ease both; }
+  @keyframes raaFade { from { opacity:0; transform: translateY(6px);} to { opacity:1; transform: translateY(0);} }
+  @media (prefers-reduced-motion: reduce) { .raa-fade { animation:none !important; } }
+  .raa-row:hover, .raa-row:active { background:#232833; }
+  .raa-upload:active { border-color:#F4B942; }
+  button { font-family: inherit; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useMemo, useCallback, useEffect } = React;
+const HISTORY_KEY = "raceAnalyzerHistory_v1";
+const GOAL_KEY = "raceAnalyzerGoal_v1";
+const STRENGTH_KEY = "raceAnalyzerStrength_v1";
+const ROWING_KEY = "raceAnalyzerRowing_v1";
+
+/* ---------------------------------------------------------------
+   TOKENS
+---------------------------------------------------------------- */
+const C = {
+  bg: "#12151B", surface: "#1B1F27", surfaceAlt: "#232833", line: "#2E3542",
+  chalk: "#F3F1EA", ink: "#A7AEBB", inkDim: "#6E7683",
+  red: "#D6473F", yellow: "#F4B942", good: "#6FCF97", warn: "#F4B942", bad: "#E1584F",
+};
+const toneColor = { good: C.good, warn: C.yellow, bad: C.bad };
+
+/* ---------------------------------------------------------------
+   ICONS (SVG inline, sin dependencias externas)
+---------------------------------------------------------------- */
+const Ico = {
+  Upload: ({ size = 20, color = C.yellow }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 16V4M12 4l-4 4M12 4l4 4" /><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+    </svg>
+  ),
+  Alert: ({ size = 16, color = C.bad }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round">
+      <circle cx="12" cy="12" r="9" /><line x1="12" y1="8" x2="12" y2="13" /><circle cx="12" cy="16.2" r="0.6" fill={color} stroke="none" />
+    </svg>
+  ),
+  Restart: ({ size = 13, color = C.ink }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 12a8 8 0 1 1-2.6-5.9" /><path d="M20 4v5h-5" />
+    </svg>
+  ),
+  Timer: ({ size = 16, color }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="13.5" r="8" /><line x1="12" y1="13.5" x2="12" y2="9" /><line x1="12" y1="13.5" x2="15" y2="13.5" /><line x1="9.5" y1="2" x2="14.5" y2="2" />
+    </svg>
+  ),
+  Heart: ({ size = 16, color }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color} stroke="none">
+      <path d="M12 21s-7-4.4-9.5-9.1C.7 8.1 2.2 4 6.2 4c2 0 3.5 1.1 4 2.6.5-1.5 2-2.6 4-2.6 4 0 5.5 4.1 3.6 7.9C19 16.6 12 21 12 21z" />
+    </svg>
+  ),
+  Foot: ({ size = 16, color }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round">
+      <circle cx="7" cy="7" r="2.6" /><circle cx="17" cy="17" r="2.6" /><path d="M7 9.8V13M17 19.4V22" strokeDasharray="0" />
+    </svg>
+  ),
+  Mountain: ({ size = 16, color }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color} stroke="none">
+      <path d="M3 19h18L14.5 8l-3 4.6L9 9.5 3 19z" />
+    </svg>
+  ),
+  Flame: ({ size = 15, color }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color} stroke="none">
+      <path d="M12 2c1.2 4-2.6 5.2-2.6 9a2.6 2.6 0 0 0 5.2 0c0-1.7-.9-2.6-.9-2.6s2.6.9 2.6 4.3A5.3 5.3 0 0 1 6 12.7C6 7 12 6 12 2z" />
+    </svg>
+  ),
+  Clipboard: ({ size = 13, color }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="5" y="4" width="14" height="17" rx="2" /><line x1="8" y1="9.5" x2="16" y2="9.5" /><line x1="8" y1="13.5" x2="16" y2="13.5" />
+    </svg>
+  ),
+  Dumbbell: ({ size = 16, color }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="4" y1="12" x2="20" y2="12" /><rect x="2" y="9" width="4" height="6" rx="1" /><rect x="18" y="9" width="4" height="6" rx="1" />
+    </svg>
+  ),
+  Row: ({ size = 16, color }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 17c2-2.5 4-2.5 6 0s4 2.5 6 0 4-2.5 6 0" /><path d="M2 12c2-2.5 4-2.5 6 0s4 2.5 6 0 4-2.5 6 0" />
+    </svg>
+  ),
+  Layers: ({ size = 16, color }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3 2 9l10 6 10-6-10-6z" /><path d="M2 15l10 6 10-6" />
+    </svg>
+  ),
+};
+
+/* ---------------------------------------------------------------
+   MATH / PARSING HELPERS
+---------------------------------------------------------------- */
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+function parseClockToSec(v) {
+  if (v === null || v === undefined || v === "") return null;
+  if (typeof v === "number") return v;
+  const s = String(v).trim();
+  if (/^\d+(\.\d+)?$/.test(s)) return parseFloat(s);
+  const parts = s.split(":").map(Number);
+  if (parts.some(isNaN)) return null;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return null;
+}
+function secToPace(sec) {
+  if (sec === null || sec === undefined || isNaN(sec)) return "--:--";
+  const m = Math.floor(sec / 60); const s = Math.round(sec % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+function secToHMS(sec) {
+  if (sec === null || sec === undefined || isNaN(sec)) return "--:--";
+  const h = Math.floor(sec / 3600); const m = Math.floor((sec % 3600) / 60); const s = Math.round(sec % 60);
+  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+}
+function mean(arr) {
+  const v = (arr || []).filter((x) => x !== null && x !== undefined && !isNaN(x));
+  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+}
+function stdev(arr) {
+  const v = (arr || []).filter((x) => x !== null && x !== undefined && !isNaN(x));
+  if (v.length < 2) return null;
+  const m = mean(v);
+  return Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / v.length);
+}
+function getExt(trkpt, name) {
+  const els = trkpt.getElementsByTagName("*");
+  for (let i = 0; i < els.length; i++) {
+    const tag = els[i].tagName.toLowerCase();
+    if (tag === name || tag.endsWith(":" + name)) return els[i].textContent;
+  }
+  return null;
+}
+function getExtAny(trkpt, names) {
+  for (const n of names) { const v = getExt(trkpt, n); if (v !== null) return v; }
+  return null;
+}
+
+function parseGPX(text) {
+  const doc = new DOMParser().parseFromString(text, "text/xml");
+  if (doc.getElementsByTagName("parsererror").length) throw new Error("El archivo GPX no tiene un formato válido.");
+  const trkpts = doc.getElementsByTagName("trkpt");
+  if (!trkpts.length) throw new Error("No se encontraron puntos de recorrido (trkpt) en el GPX.");
+  const points = []; let cumDist = 0; let startTime = null; let prev = null;
+  for (let i = 0; i < trkpts.length; i++) {
+    const tp = trkpts[i];
+    const lat = parseFloat(tp.getAttribute("lat"));
+    const lon = parseFloat(tp.getAttribute("lon"));
+    const eleEl = tp.getElementsByTagName("ele")[0];
+    const ele = eleEl ? parseFloat(eleEl.textContent) : null;
+    const timeEl = tp.getElementsByTagName("time")[0];
+    const timeStr = timeEl ? timeEl.textContent : null;
+    const hrRaw = getExt(tp, "hr"); const cadRaw = getExt(tp, "cad");
+    const hr = hrRaw ? parseFloat(hrRaw) : null;
+    const cadence = cadRaw ? parseFloat(cadRaw) * 2 : null;
+    // Dinámica de carrera avanzada: solo presente si el reloj/pod la registró y el export la incluyó
+    const powerRaw = getExtAny(tp, ["power", "watts"]);
+    const voRaw = getExtAny(tp, ["verticaloscillation", "vo"]);
+    const gctRaw = getExtAny(tp, ["stancetime", "groundcontacttime", "gct"]);
+    const vrRaw = getExtAny(tp, ["verticalratio", "vr"]);
+    const strideRaw = getExtAny(tp, ["steplength", "stridelength"]);
+    const power = powerRaw ? parseFloat(powerRaw) : null;
+    const vo = voRaw ? parseFloat(voRaw) / 10 : null; // mm -> cm
+    const gct = gctRaw ? parseFloat(gctRaw) : null; // ms
+    const vr = vrRaw ? parseFloat(vrRaw) : null; // %
+    const strideLen = strideRaw ? parseFloat(strideRaw) / 1000 : null; // mm -> m
+    if (prev) cumDist += haversineKm(prev.lat, prev.lon, lat, lon);
+    let elapsedSec = null;
+    if (timeStr) {
+      const t = new Date(timeStr).getTime();
+      if (!isNaN(t)) { if (startTime === null) startTime = t; elapsedSec = (t - startTime) / 1000; }
+    }
+    points.push({ lat, lon, ele, elapsedSec, distanceKm: cumDist, hr, cadence, power, vo, gct, vr, strideLen });
+    prev = { lat, lon };
+  }
+  if (points.every((p) => p.elapsedSec === null)) throw new Error("El GPX no incluye marcas de tiempo por punto, así que no podemos calcular ritmo.");
+  return points;
+}
+
+function buildSplitsFromPoints(points) {
+  const clean = points.filter((p) => p.elapsedSec !== null);
+  if (clean.length < 2) return [];
+  const splits = []; let currentKm = 1; let segStartTime = clean[0].elapsedSec;
+  let hrSum = 0, hrCnt = 0, cadSum = 0, cadCnt = 0, gain = 0;
+  let powSum = 0, powCnt = 0, voSum = 0, voCnt = 0, gctSum = 0, gctCnt = 0, vrSum = 0, vrCnt = 0, strideSum = 0, strideCnt = 0;
+  for (let i = 1; i < clean.length; i++) {
+    const p = clean[i]; const prevP = clean[i - 1];
+    if (p.ele != null && prevP.ele != null && p.ele > prevP.ele) gain += p.ele - prevP.ele;
+    if (p.hr != null) { hrSum += p.hr; hrCnt++; }
+    if (p.cadence != null) { cadSum += p.cadence; cadCnt++; }
+    if (p.power != null) { powSum += p.power; powCnt++; }
+    if (p.vo != null) { voSum += p.vo; voCnt++; }
+    if (p.gct != null) { gctSum += p.gct; gctCnt++; }
+    if (p.vr != null) { vrSum += p.vr; vrCnt++; }
+    if (p.strideLen != null) { strideSum += p.strideLen; strideCnt++; }
+    if (p.distanceKm >= currentKm) {
+      const prevDist = prevP.distanceKm;
+      const frac = (currentKm - prevDist) / (p.distanceKm - prevDist || 1);
+      const boundaryTime = prevP.elapsedSec + frac * (p.elapsedSec - prevP.elapsedSec);
+      const timeSec = boundaryTime - segStartTime;
+      splits.push({
+        km: currentKm, timeSec, paceSec: timeSec,
+        hr: hrCnt ? hrSum / hrCnt : null, cadence: cadCnt ? cadSum / cadCnt : null, elevGain: Math.round(gain),
+        power: powCnt ? powSum / powCnt : null, vo: voCnt ? voSum / voCnt : null, gct: gctCnt ? gctSum / gctCnt : null,
+        vr: vrCnt ? vrSum / vrCnt : null, strideLen: strideCnt ? strideSum / strideCnt : null,
+      });
+      currentKm++; segStartTime = boundaryTime;
+      hrSum = 0; hrCnt = 0; cadSum = 0; cadCnt = 0; gain = 0;
+      powSum = 0; powCnt = 0; voSum = 0; voCnt = 0; gctSum = 0; gctCnt = 0; vrSum = 0; vrCnt = 0; strideSum = 0; strideCnt = 0;
+    }
+  }
+  return splits;
+}
+
+/* Detecta tiempo corriendo vs caminando a partir de la velocidad punto a punto */
+function computeRunWalkStats(points) {
+  const clean = points.filter((p) => p.elapsedSec !== null);
+  if (clean.length < 2) return null;
+  let runSec = 0, walkSec = 0;
+  for (let i = 1; i < clean.length; i++) {
+    const dt = clean[i].elapsedSec - clean[i - 1].elapsedSec;
+    if (dt <= 0) continue;
+    const dd = (clean[i].distanceKm - clean[i - 1].distanceKm) * 1000;
+    const speed = dd / dt; // m/s
+    if (speed > 0 && speed < 1.7) walkSec += dt; else runSec += dt;
+  }
+  return { runSec, walkSec };
+}
+
+/* CSV parser propio (sin dependencias), soporta comillas */
+function parseCSVText(text) {
+  const lines = text.split(/\r\n|\n|\r/).filter((l) => l.length);
+  const rows = lines.map((line) => {
+    const cells = []; let cur = ""; let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { if (inQ && line[i + 1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
+      else if (ch === "," && !inQ) { cells.push(cur); cur = ""; }
+      else cur += ch;
+    }
+    cells.push(cur);
+    return cells;
+  });
+  const headers = rows[0].map((h) => h.trim());
+  const data = rows.slice(1).map((r) => {
+    const obj = {};
+    headers.forEach((h, i) => (obj[h] = r[i] !== undefined ? r[i].trim() : ""));
+    return obj;
+  });
+  return { headers, data };
+}
+
+function findCol(headers, patterns) {
+  for (const p of patterns) { const found = headers.find((h) => p.test(h)); if (found) return found; }
+  return null;
+}
+
+function parseCSV(text) {
+  const { headers, data: rows } = parseCSVText(text);
+  if (!rows.length) throw new Error("El CSV está vacío.");
+
+  const splitCol = findCol(headers, [/^split$/i, /^lap$/i, /vuelta/i]);
+  const paceCol = findCol(headers, [/avg.*pace/i, /average.*pace/i, /^pace$/i, /ritmo/i]);
+  const timeCol = findCol(headers, [/^time$/i, /^duration$/i, /tiempo/i, /^moving time/i]);
+  const hrCol = findCol(headers, [/avg.*hr/i, /avg.*heart/i, /^hr$/i, /heart rate/i, /frecuencia/i, /^fc/i]);
+  const cadCol = findCol(headers, [/avg.*run.*cadence/i, /avg.*cadence/i, /cadence/i, /cadencia/i]);
+  const elevGainCol = findCol(headers, [/elev.*gain/i, /ganancia/i, /desnivel/i]);
+  const distCol = findCol(headers, [/distance/i, /distancia/i, /^dist/i]);
+  const latCol = findCol(headers, [/^lat/i, /latitud/i]);
+  const lonCol = findCol(headers, [/^lon/i, /^lng/i, /longitud/i]);
+
+  if (splitCol && paceCol && rows.length < 400) {
+    const splits = rows
+      .filter((r) => /^\d+$/.test(String(r[splitCol] ?? "").trim()))
+      .map((r, idx) => {
+        const paceSec = parseClockToSec(r[paceCol]);
+        const timeSec = timeCol ? parseClockToSec(r[timeCol]) : paceSec;
+        return { km: idx + 1, paceSec, timeSec: timeSec ?? paceSec, hr: hrCol ? Number(r[hrCol]) : null, cadence: cadCol ? Number(r[cadCol]) : null, elevGain: elevGainCol ? Number(r[elevGainCol]) || 0 : null };
+      })
+      .filter((s) => s.paceSec !== null);
+    if (splits.length >= 2) return splits;
+  }
+
+  if (latCol && lonCol) {
+    const points = rows
+      .map((r) => ({ lat: parseFloat(r[latCol]), lon: parseFloat(r[lonCol]), ele: null, elapsedSec: timeCol ? parseClockToSec(r[timeCol]) : null, hr: hrCol ? Number(r[hrCol]) : null, cadence: cadCol ? Number(r[cadCol]) : null }))
+      .filter((p) => !isNaN(p.lat) && !isNaN(p.lon));
+    let cum = 0; let prev = null;
+    for (const p of points) { if (prev) cum += haversineKm(prev.lat, prev.lon, p.lat, p.lon); p.distanceKm = cum; prev = p; }
+    if (points.every((p) => p.elapsedSec === null)) points.forEach((p, i) => (p.elapsedSec = i));
+    const splits = buildSplitsFromPoints(points);
+    if (splits.length >= 2) return splits;
+  }
+
+  if (distCol && (timeCol || paceCol)) {
+    const points = rows.map((r, i) => ({ distanceKm: Number(r[distCol]), elapsedSec: timeCol ? parseClockToSec(r[timeCol]) : i, ele: null, hr: hrCol ? Number(r[hrCol]) : null, cadence: cadCol ? Number(r[cadCol]) : null }));
+    const splits = buildSplitsFromPoints(points);
+    if (splits.length >= 2) return splits;
+  }
+
+  throw new Error("No reconocemos las columnas de este CSV. Prueba exportando la tabla de 'Splits' desde Garmin Connect, o sube el archivo .gpx original.");
+}
+
+/* ---------------------------------------------------------------
+   FIT (formato binario nativo de Garmin) — parser mínimo propio
+---------------------------------------------------------------- */
+const FIT_BASE = {
+  0x00: { size: 1, signed: false, inval: 0xFF }, 0x01: { size: 1, signed: true, inval: 0x7F },
+  0x02: { size: 1, signed: false, inval: 0xFF }, 0x83: { size: 2, signed: true, inval: 0x7FFF },
+  0x84: { size: 2, signed: false, inval: 0xFFFF }, 0x85: { size: 4, signed: true, inval: 0x7FFFFFFF },
+  0x86: { size: 4, signed: false, inval: 0xFFFFFFFF }, 0x07: { size: 1, signed: false, inval: 0x00 },
+  0x0A: { size: 1, signed: false, inval: 0x00 }, 0x8B: { size: 2, signed: false, inval: 0x0000 },
+  0x8C: { size: 4, signed: false, inval: 0x00000000 }, 0x0D: { size: 1, signed: false, inval: 0xFF },
+};
+const FIT_RECORD_FIELDS = {
+  253: "timestamp", 0: "positionLat", 1: "positionLong", 2: "altitude", 3: "heartRate",
+  4: "cadence", 5: "distance", 6: "speed", 7: "power", 39: "verticalOscillation",
+  41: "stanceTime", 73: "enhancedSpeed", 78: "enhancedAltitude", 83: "verticalRatio", 85: "stepLength",
+};
+function fitReadVal(view, offset, base, littleEndian) {
+  const { size, signed } = base;
+  if (size === 1) return signed ? view.getInt8(offset) : view.getUint8(offset);
+  if (size === 2) return signed ? view.getInt16(offset, littleEndian) : view.getUint16(offset, littleEndian);
+  if (size === 4) return signed ? view.getInt32(offset, littleEndian) : view.getUint32(offset, littleEndian);
+  return null;
+}
+function fitApplyScale(name, raw) {
+  switch (name) {
+    case "altitude": case "enhancedAltitude": return raw / 5 - 500;
+    case "distance": return raw / 100;
+    case "speed": case "enhancedSpeed": return raw / 1000;
+    case "verticalOscillation": return raw / 100; // cm
+    case "stanceTime": return raw / 10; // ms
+    case "verticalRatio": return raw / 100; // %
+    case "stepLength": return raw / 10000; // m
+    case "positionLat": case "positionLong": return raw * (180 / Math.pow(2, 31));
+    default: return raw;
+  }
+}
+function parseFIT(buffer) {
+  const view = new DataView(buffer);
+  if (buffer.byteLength < 14) throw new Error("El archivo .fit parece incompleto o dañado.");
+  const headerSize = view.getUint8(0);
+  const sig = String.fromCharCode(view.getUint8(8), view.getUint8(9), view.getUint8(10), view.getUint8(11));
+  if (sig !== ".FIT") throw new Error("No es un archivo .fit válido.");
+  const dataSize = view.getUint32(4, true);
+  let offset = headerSize;
+  const end = Math.min(headerSize + dataSize, buffer.byteLength);
+  const defs = {};
+  let lastTimestamp = null;
+  const records = [];
+
+  while (offset < end) {
+    const header = view.getUint8(offset); offset += 1;
+    const isDefinition = (header & 0x40) !== 0;
+    const compressedTs = (header & 0x80) !== 0;
+
+    if (isDefinition) {
+      const localType = header & 0x0F;
+      offset += 1;
+      const arch = view.getUint8(offset); offset += 1;
+      const littleEndian = arch === 0;
+      const globalMesgNum = view.getUint16(offset, littleEndian); offset += 2;
+      const numFields = view.getUint8(offset); offset += 1;
+      const fields = [];
+      for (let i = 0; i < numFields; i++) {
+        fields.push({ defNum: view.getUint8(offset), size: view.getUint8(offset + 1), baseTypeByte: view.getUint8(offset + 2) });
+        offset += 3;
+      }
+      if (header & 0x20) {
+        const numDev = view.getUint8(offset); offset += 1;
+        offset += numDev * 3;
+      }
+      defs[localType] = { globalMesgNum, littleEndian, fields };
+    } else {
+      let localType, def;
+      if (compressedTs) {
+        localType = (header >> 5) & 0x3;
+        const timeOffset = header & 0x1F;
+        def = defs[localType];
+        if (lastTimestamp != null) {
+          const lastOffset = lastTimestamp & 0x1F;
+          let nt = lastTimestamp - lastOffset + timeOffset;
+          if (timeOffset < lastOffset) nt += 32;
+          lastTimestamp = nt;
+        }
+      } else {
+        localType = header & 0x0F;
+        def = defs[localType];
+      }
+      if (!def) break; // formato no reconocido a partir de aquí; nos quedamos con lo ya leído
+      const rec = {};
+      if (compressedTs && lastTimestamp != null) rec.timestamp = lastTimestamp;
+      for (const f of def.fields) {
+        const base = FIT_BASE[f.baseTypeByte] || { size: f.size, signed: false, inval: null };
+        let val = null;
+        if (base.size && f.size === base.size) {
+          val = fitReadVal(view, offset, base, def.littleEndian);
+          if (val === base.inval) val = null;
+        }
+        offset += f.size;
+        const name = FIT_RECORD_FIELDS[f.defNum];
+        if (name && val !== null) {
+          rec[name] = fitApplyScale(name, val);
+          if (name === "timestamp") lastTimestamp = val;
+        }
+      }
+      if (def.globalMesgNum === 20) records.push(rec);
+    }
+  }
+  return records;
+}
+function buildPointsFromFIT(records) {
+  const withTime = records.filter((r) => r.timestamp != null);
+  if (!withTime.length) throw new Error("El .fit no incluye marcas de tiempo por registro.");
+  const t0 = withTime[0].timestamp;
+  let prevLat = null, prevLon = null, cumFallback = 0;
+  const points = withTime.map((r) => {
+    let distanceKm;
+    if (r.distance != null) distanceKm = r.distance / 1000;
+    else if (r.positionLat != null && r.positionLong != null) {
+      if (prevLat != null) cumFallback += haversineKm(prevLat, prevLon, r.positionLat, r.positionLong);
+      distanceKm = cumFallback; prevLat = r.positionLat; prevLon = r.positionLong;
+    } else distanceKm = null;
+    return {
+      lat: r.positionLat ?? null, lon: r.positionLong ?? null,
+      ele: r.altitude ?? r.enhancedAltitude ?? null,
+      elapsedSec: r.timestamp - t0, distanceKm,
+      hr: r.heartRate ?? null, cadence: r.cadence != null ? r.cadence * 2 : null,
+      power: r.power ?? null, vo: r.verticalOscillation ?? null, gct: r.stanceTime ?? null,
+      vr: r.verticalRatio ?? null, strideLen: r.stepLength ?? null,
+    };
+  }).filter((p) => p.distanceKm != null);
+  if (points.length < 2) throw new Error("No se pudo calcular la distancia recorrida a partir del .fit.");
+  return points;
+}
+
+/* ---------------------------------------------------------------
+   ANALYSIS
+---------------------------------------------------------------- */
+function computeAnalysis(splits) {
+  const full = splits.filter((s) => s.paceSec && s.paceSec > 0);
+  const n = full.length; const half = Math.floor(n / 2);
+  const paceArr = full.map((s) => s.paceSec);
+  const firstHalfPace = mean(paceArr.slice(0, half));
+  const secondHalfPace = mean(paceArr.slice(half));
+  const splitDiffPct = firstHalfPace && secondHalfPace ? ((secondHalfPace - firstHalfPace) / firstHalfPace) * 100 : null;
+  const paceCV = mean(paceArr) ? (stdev(paceArr) / mean(paceArr)) * 100 : null;
+
+  const hrArr = full.map((s) => s.hr);
+  const hasHr = hrArr.some((x) => x !== null && x !== undefined && !isNaN(x));
+  let decouplingPct = null;
+  if (hasHr) {
+    const firstHalfHr = mean(hrArr.slice(0, half)); const secondHalfHr = mean(hrArr.slice(half));
+    const efFirst = firstHalfHr ? 3600 / firstHalfPace / firstHalfHr : null;
+    const efSecond = secondHalfHr ? 3600 / secondHalfPace / secondHalfHr : null;
+    if (efFirst && efSecond) decouplingPct = ((efFirst - efSecond) / efFirst) * 100;
+  }
+
+  const cadArr = full.map((s) => s.cadence);
+  const hasCad = cadArr.some((x) => x !== null && x !== undefined && !isNaN(x));
+  const avgCad = hasCad ? mean(cadArr) : null;
+  const cadCV = hasCad && avgCad ? (stdev(cadArr) / avgCad) * 100 : null;
+
+  const elevArr = full.map((s) => s.elevGain);
+  const hasElev = elevArr.some((x) => x !== null && x !== undefined && x > 0);
+  const totalGain = hasElev ? elevArr.reduce((a, b) => a + (b || 0), 0) : 0;
+
+  let bestKm = null, worstKm = null;
+  full.forEach((s) => { if (!bestKm || s.paceSec < bestKm.paceSec) bestKm = s; if (!worstKm || s.paceSec > worstKm.paceSec) worstKm = s; });
+
+  const powerArr = full.map((s) => s.power);
+  const hasPower = powerArr.some((x) => x != null && !isNaN(x));
+  const avgPower = hasPower ? mean(powerArr) : null;
+
+  const voArr = full.map((s) => s.vo);
+  const hasVO = voArr.some((x) => x != null && !isNaN(x));
+  const avgVO = hasVO ? mean(voArr) : null;
+
+  const gctArr = full.map((s) => s.gct);
+  const hasGCT = gctArr.some((x) => x != null && !isNaN(x));
+  const avgGCT = hasGCT ? mean(gctArr) : null;
+
+  const vrArr = full.map((s) => s.vr);
+  const hasVR = vrArr.some((x) => x != null && !isNaN(x));
+  const avgVR = hasVR ? mean(vrArr) : null;
+
+  const strideArr = full.map((s) => s.strideLen);
+  const hasStride = strideArr.some((x) => x != null && !isNaN(x));
+  const avgStride = hasStride ? mean(strideArr) : null;
+
+  return {
+    n, splitDiffPct, paceCV, hasHr, decouplingPct, hasCad, avgCad, cadCV, hasElev, totalGain, bestKm, worstKm,
+    hasPower, avgPower, hasVO, avgVO, hasGCT, avgGCT, hasVR, avgVR, hasStride, avgStride,
+  };
+}
+
+function verdictPace(a) {
+  if (a.splitDiffPct === null) return { tone: "warn", text: "No hay suficientes datos para evaluar tu manejo del ritmo." };
+  if (a.splitDiffPct > 4) return { tone: "bad", text: `Fuiste ${a.splitDiffPct.toFixed(1)}% más lento en la segunda mitad: salida demasiado ambiciosa. En la próxima carrera, arranca 5-10 seg/km por debajo de tu ritmo objetivo y guarda energía para el tramo final.` };
+  if (a.splitDiffPct > 1.5) return { tone: "warn", text: `Ligero positive split (+${a.splitDiffPct.toFixed(1)}%). No es grave, pero afinando el ritmo de salida podrías correr más parejo y terminar más fuerte.` };
+  if (a.splitDiffPct < -3) return { tone: "good", text: `Negative split de ${Math.abs(a.splitDiffPct).toFixed(1)}%: guardaste energía y aceleraste al final. Excelente gestión, aunque quizá pudiste salir un poco más rápido para aprovechar mejor tu forma.` };
+  return { tone: "good", text: `Ritmo muy uniforme (diferencia de ${a.splitDiffPct.toFixed(1)}% entre mitades). Ese control es justo lo que se busca en una carrera bien pacing-ada.` };
+}
+function verdictConsistency(a) {
+  if (a.paceCV === null) return null;
+  if (a.paceCV > 8) return { tone: "warn", text: `Tu ritmo varió bastante entre kilómetros (coeficiente de variación ${a.paceCV.toFixed(1)}%). Puede deberse al terreno, semáforos o falta de referencia de ritmo; entrenar con reloj/audio por km te ayudará a nivelarlo.` };
+  return { tone: "good", text: `Poca variación entre kilómetros (${a.paceCV.toFixed(1)}%): buena señal de control del esfuerzo.` };
+}
+function verdictHr(a) {
+  if (!a.hasHr || a.decouplingPct === null) return { tone: "warn", text: "No hay datos de frecuencia cardíaca suficientes en el archivo para este análisis." };
+  if (a.decouplingPct > 10) return { tone: "bad", text: `Desacople cardíaco alto (${a.decouplingPct.toFixed(1)}%): tu corazón tuvo que esforzarse cada vez más para mantener el ritmo. Suele indicar que faltó base aeróbica o que el ritmo fue exigente para tu nivel actual. Prioriza rodajes largos en zona 2 (conversación fácil) las próximas semanas.` };
+  if (a.decouplingPct > 5) return { tone: "warn", text: `Desacople moderado (${a.decouplingPct.toFixed(1)}%), normal en carreras largas o con calor. Aun así, sumar más volumen suave puede mejorar tu resistencia aeróbica.` };
+  return { tone: "good", text: `Desacople bajo (${a.decouplingPct.toFixed(1)}%): tu eficiencia cardíaca se mantuvo estable de principio a fin. Buena base aeróbica.` };
+}
+function verdictCadence(a) {
+  if (!a.hasCad || a.avgCad === null) return { tone: "warn", text: "El archivo no trae datos de cadencia." };
+  const c = a.avgCad; let base;
+  if (c < 165) base = { tone: "warn", text: `Cadencia media de ${c.toFixed(0)} spm, por debajo del rango habitual (170-185 spm). Zancadas más cortas y rápidas suelen reducir el impacto por paso; prueba drills de skipping y correr unos minutos al ritmo de un metrónomo a 172-175 spm.` };
+  else if (c <= 185) base = { tone: "good", text: `Cadencia media de ${c.toFixed(0)} spm: dentro de un rango eficiente para la mayoría de corredores.` };
+  else base = { tone: "good", text: `Cadencia alta (${c.toFixed(0)} spm), típica de zancada corta y rápida. Está bien si no compensa una falta de fuerza en la zancada; complementa con trabajo de fuerza de tren inferior.` };
+  if (a.cadCV !== null && a.cadCV > 6) base.text += ` También se movió bastante entre kilómetros (variación ${a.cadCV.toFixed(1)}%), quizá por el terreno o la fatiga: trabajar técnica de carrera puede darte más estabilidad.`;
+  return base;
+}
+function verdictPower(a) {
+  if (!a.hasPower) return null;
+  return { tone: "good", text: `Potencia media de ${Math.round(a.avgPower)} W. En carrera a pie la potencia mezcla ritmo, terreno y técnica; no hay un número "ideal" universal — sirve sobre todo para comparar tus propios entrenamientos entre sí y ver si mejoras con el tiempo.` };
+}
+function verdictDynamics(a) {
+  const parts = [];
+  if (a.hasGCT) parts.push(`tiempo de contacto de ${Math.round(a.avgGCT)} ms`);
+  if (a.hasVR) parts.push(`ratio vertical de ${a.avgVR.toFixed(1)}%`);
+  if (a.hasVO) parts.push(`oscilación vertical de ${a.avgVO.toFixed(1)} cm`);
+  if (a.hasStride) parts.push(`zancada media de ${a.avgStride.toFixed(2)} m`);
+  if (!parts.length) return null;
+  const desc = parts.join(", ");
+  if (a.hasCad && a.avgCad < 165 && a.hasVR && a.avgVR > 8) {
+    return { tone: "warn", text: `Tu dinámica de carrera: ${desc}. Combinado con tu cadencia (${Math.round(a.avgCad)} spm), es la cadena típica de una zancada larga: menos pasos por minuto, más tiempo de apoyo en el suelo y más energía que se va hacia arriba en vez de hacia adelante. Trabajar la cadencia con metrónomo suele mejorar estos números casi en conjunto.` };
+  }
+  return { tone: "good", text: `Tu dinámica de carrera: ${desc}. Son valores razonables; vale la pena vigilarlos carrera a carrera para detectar fatiga o cambios de técnica.` };
+}
+function verdictElevation(a) {
+  if (!a.hasElev) return { tone: "good", text: "Recorrido prácticamente llano: el desnivel no fue un factor relevante en tu ritmo." };
+  return { tone: "warn", text: `Acumulaste unos ${Math.round(a.totalGain)} m de desnivel positivo. Es normal perder ritmo en las subidas; para comparar carreras con distinto perfil, fíjate más en el esfuerzo (FC) que en el ritmo plano, y suma algo de trabajo de cuestas en tus entrenos.` };
+}
+
+/* ---------------------------------------------------------------
+   GRAFICAS SVG (sin librerías externas, responsivas por viewBox)
+---------------------------------------------------------------- */
+function LineChartSVG({ data, yKey, color, height = 220, formatValue, refValue, refLabel, unitPrefix = "KM " }) {
+  const W = 600, marginL = 42, marginR = 10, marginT = 14, marginB = 24;
+  const plotW = W - marginL - marginR, plotH = height - marginT - marginB;
+  const vals = data.map((d) => d[yKey]).filter((v) => v != null && !isNaN(v));
+  if (!vals.length) return null;
+  let min = Math.min(...vals), max = Math.max(...vals);
+  if (refValue != null) { min = Math.min(min, refValue); max = Math.max(max, refValue); }
+  const pad = (max - min) * 0.15 || Math.max(1, Math.abs(min) * 0.05);
+  const yMin = min - pad, yMax = max + pad;
+  const xFor = (i) => marginL + (data.length > 1 ? i / (data.length - 1) : 0.5) * plotW;
+  const yFor = (v) => marginT + (1 - (v - yMin) / (yMax - yMin || 1)) * plotH;
+  let pathD = "";
+  data.forEach((d, i) => {
+    if (d[yKey] == null) return;
+    const cmd = pathD === "" ? "M" : "L";
+    pathD += `${cmd} ${xFor(i).toFixed(1)} ${yFor(d[yKey]).toFixed(1)} `;
+  });
+  const ticks = 4;
+  const tickVals = Array.from({ length: ticks + 1 }, (_, i) => yMin + (i / ticks) * (yMax - yMin));
+  const xEvery = data.length > 20 ? Math.ceil(data.length / 10) : data.length > 10 ? 2 : 1;
+  return (
+    <svg viewBox={`0 0 ${W} ${height}`} width="100%" height={height} style={{ display: "block" }}>
+      {tickVals.map((tv, i) => (
+        <g key={i}>
+          <line x1={marginL} x2={W - marginR} y1={yFor(tv)} y2={yFor(tv)} stroke={C.line} strokeWidth="1" />
+          <text x={marginL - 6} y={yFor(tv) + 3} textAnchor="end" fontSize="9" fill={C.inkDim} fontFamily="IBM Plex Mono, monospace">{formatValue ? formatValue(tv) : Math.round(tv)}</text>
+        </g>
+      ))}
+      {data.map((d, i) => (i % xEvery === 0 || i === data.length - 1) ? (
+        <text key={i} x={xFor(i)} y={height - 6} textAnchor="middle" fontSize="9" fill={C.inkDim} fontFamily="IBM Plex Mono, monospace">{d.km}</text>
+      ) : null)}
+      {refValue != null && (
+        <>
+          <line x1={marginL} x2={W - marginR} y1={yFor(refValue)} y2={yFor(refValue)} stroke={C.yellow} strokeWidth="1.5" strokeDasharray="5 4" />
+          {refLabel && <text x={W - marginR} y={yFor(refValue) - 5} textAnchor="end" fontSize="9" fill={C.yellow} fontFamily="IBM Plex Mono, monospace">{refLabel}</text>}
+        </>
+      )}
+      <path d={pathD} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+      {data.map((d, i) => d[yKey] != null ? (
+        <circle key={i} cx={xFor(i)} cy={yFor(d[yKey])} r="3" fill={color}>
+          <title>{`${unitPrefix}${d.km}: ${formatValue ? formatValue(d[yKey]) : d[yKey]}`}</title>
+        </circle>
+      ) : null)}
+    </svg>
+  );
+}
+
+function BarChartSVG({ data, yKey, height = 200 }) {
+  const W = 600, marginL = 42, marginR = 10, marginT = 14, marginB = 24;
+  const plotW = W - marginL - marginR, plotH = height - marginT - marginB;
+  const vals = data.map((d) => d[yKey] || 0);
+  const max = Math.max(...vals, 1);
+  const gap = plotW / data.length;
+  const bw = Math.max(gap * 0.55, 2);
+  const xEvery = data.length > 20 ? Math.ceil(data.length / 10) : data.length > 10 ? 2 : 1;
+  return (
+    <svg viewBox={`0 0 ${W} ${height}`} width="100%" height={height} style={{ display: "block" }}>
+      <line x1={marginL} x2={W - marginR} y1={marginT + plotH} y2={marginT + plotH} stroke={C.line} strokeWidth="1" />
+      {data.map((d, i) => {
+        const v = d[yKey] || 0;
+        const h = (v / max) * plotH;
+        const x = marginL + i * gap + (gap - bw) / 2;
+        const y = marginT + plotH - h;
+        return (
+          <rect key={i} x={x} y={y} width={bw} height={Math.max(h, 1)} fill={v > 8 ? C.yellow : C.line} rx="2">
+            <title>{`KM ${d.km}: ${Math.round(v)} m+`}</title>
+          </rect>
+        );
+      })}
+      {data.map((d, i) => (i % xEvery === 0 || i === data.length - 1) ? (
+        <text key={i} x={marginL + i * gap + gap / 2} y={height - 6} textAnchor="middle" fontSize="9" fill={C.inkDim} fontFamily="IBM Plex Mono, monospace">{d.km}</text>
+      ) : null)}
+    </svg>
+  );
+}
+
+/* ---------------------------------------------------------------
+   COACHING ORIENTADO A OBJETIVO
+---------------------------------------------------------------- */
+function daysUntil(dateStr) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const target = new Date(dateStr + "T00:00:00");
+  return Math.ceil((target - today) / 86400000);
+}
+function weeksUntil(dateStr) { return Math.ceil(daysUntil(dateStr) / 7); }
+function formatRaceDate(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
+}
+
+function buildShortVerdict(analysis, totals, goal) {
+  const targetPaceSec = goal.targetTimeSec / goal.distanceKm;
+  const gapSec = totals.avgPaceSec - targetPaceSec;
+  const gapTxt = Math.abs(gapSec) < 3
+    ? `justo a tu ritmo objetivo (${secToPace(targetPaceSec)} /km)`
+    : gapSec > 0
+    ? `${secToPace(Math.abs(gapSec))} /km más lento que tu objetivo (${secToPace(targetPaceSec)} /km)`
+    : `${secToPace(Math.abs(gapSec))} /km más rápido que tu objetivo (${secToPace(targetPaceSec)} /km)`;
+
+  const signals = [];
+  if (analysis.decouplingPct != null) signals.push({ severity: analysis.decouplingPct, label: `tu FC se desacopla ${analysis.decouplingPct.toFixed(1)}% — te falta base aeróbica` });
+  if (analysis.splitDiffPct != null && analysis.splitDiffPct > 1.5) signals.push({ severity: analysis.splitDiffPct, label: `sales fuerte y decaes (+${analysis.splitDiffPct.toFixed(1)}% en la 2ª mitad)` });
+  if (analysis.hasCad && analysis.avgCad < 165) signals.push({ severity: 165 - analysis.avgCad, label: `tu cadencia (${Math.round(analysis.avgCad)} spm) está baja` });
+  signals.sort((a, b) => b.severity - a.severity);
+  const limiter = signals[0];
+
+  let text = `Corriste a ${secToPace(totals.avgPaceSec)} /km — ${gapTxt}.`;
+  text += limiter ? ` Tu principal freno ahora: ${limiter.label}.` : ` Sin señales de alarma en esta carrera.`;
+  return { text, gapSec, limiter };
+}
+
+function weeklyFocus(weeksLeft, analysis, gapSec) {
+  if (weeksLeft <= 0) return "Tu carrera ya es esta semana (o pasó): si es antes, prioriza descanso y sueño sobre cualquier entreno.";
+  if (weeksLeft === 1) return "Semana de carrera: baja el volumen a la mitad, duerme bien, y no pruebes nada nuevo el día D (ni zapatillas, ni comida).";
+  if (weeksLeft <= 2) return "Afinado: reduce el volumen un 30-40% y mete algo de ritmo objetivo corto para llegar fresco, no exhausto.";
+  if (analysis.decouplingPct != null && analysis.decouplingPct > 8) return "Prioriza rodajes largos y suaves en Z2 (conversación fácil) — te falta base aeróbica antes de meter velocidad.";
+  if (analysis.hasCad && analysis.avgCad < 165) return "Suma 2-3 tandas de 5 min a ritmo objetivo con metrónomo a 172-175 spm — la cadencia se entrena y te paga en septiembre.";
+  if (gapSec != null && gapSec > 20) return "Mete series semanales al ritmo objetivo (ej. 6x1000 m) para acercar tu cuerpo a esa velocidad.";
+  return "Vas encaminado: mantén el volumen actual y suma un tempo run semanal a ritmo objetivo.";
+}
+
+/* ---------------------------------------------------------------
+   UI PIECES
+---------------------------------------------------------------- */
+function VerdictCard({ verdict, Icon }) {
+  if (!verdict) return null;
+  const color = toneColor[verdict.tone] || C.ink;
+  return (
+    <div style={{ background: C.surfaceAlt, borderLeft: `3px solid ${color}`, borderRadius: 4, padding: "14px 16px", marginTop: 14, display: "flex", gap: 12, alignItems: "flex-start" }}>
+      {Icon && <Icon size={16} color={color} />}
+      <p style={{ margin: 0, fontFamily: "Inter, sans-serif", fontSize: 14, lineHeight: 1.55, color: C.chalk }}>{verdict.text}</p>
+    </div>
+  );
+}
+function LapLabel({ n, title }) {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
+      <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, letterSpacing: 1, color: C.inkDim }}>VUELTA {String(n).padStart(2, "0")}</span>
+      <span style={{ fontFamily: "Oswald, sans-serif", fontSize: 22, fontWeight: 600, letterSpacing: 0.3, color: C.chalk, textTransform: "uppercase" }}>{title}</span>
+    </div>
+  );
+}
+function LaneDivider() {
+  return <div style={{ height: 1, margin: "40px 0 28px", backgroundImage: `repeating-linear-gradient(90deg, ${C.line} 0 10px, transparent 10px 20px)` }} />;
+}
+function StatCard({ label, value, unit }) {
+  return (
+    <div style={{ background: C.surfaceAlt, border: `1px solid ${C.line}`, borderRadius: 6, padding: "14px 16px", minWidth: 120, flex: "1 1 120px" }}>
+      <div style={{ fontFamily: "Inter, sans-serif", fontSize: 10.5, letterSpacing: 1.2, textTransform: "uppercase", color: C.inkDim, marginBottom: 6 }}>{label}</div>
+      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 24, color: C.chalk, fontWeight: 600 }}>{value}{unit && <span style={{ fontSize: 13, color: C.ink, marginLeft: 4 }}>{unit}</span>}</div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------
+   MAIN COMPONENT
+---------------------------------------------------------------- */
+const inputStyle = { display: "block", marginTop: 4, background: C.bg, border: `1px solid ${C.line}`, borderRadius: 4, color: C.chalk, padding: "7px 8px", fontSize: 13, fontFamily: "'IBM Plex Mono', monospace", width: 140 };
+
+function RaceAnalyzer() {
+  const [fileName, setFileName] = useState(null);
+  const [splits, setSplits] = useState(null);
+  const [points, setPoints] = useState(null);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("running");
+  const [history, setHistory] = useState([]);
+  const [strength, setStrength] = useState([]);
+  const [strengthDraft, setStrengthDraft] = useState({ date: new Date().toISOString().slice(0, 10), title: "", notes: "", rpe: "normal" });
+  const [rowing, setRowing] = useState([]);
+  const [rowingDraft, setRowingDraft] = useState({ date: new Date().toISOString().slice(0, 10), distanceM: "", timeStr: "", hr: "", notes: "" });
+  const [importMsg, setImportMsg] = useState(null);
+  const [goal, setGoal] = useState({ distanceKm: 10, raceDate: "2026-09-20", targetTimeSec: 45 * 60 });
+  const [editingGoal, setEditingGoal] = useState(false);
+  const [goalDraftDate, setGoalDraftDate] = useState("2026-09-20");
+  const [goalDraftTime, setGoalDraftTime] = useState("45:00");
+  const [goalDraftDistance, setGoalDraftDistance] = useState("10");
+
+  useEffect(() => {
+    try {
+      const rawGoal = localStorage.getItem(GOAL_KEY);
+      if (rawGoal) setGoal(JSON.parse(rawGoal));
+      const rawHist = localStorage.getItem(HISTORY_KEY);
+      if (rawHist) setHistory(JSON.parse(rawHist));
+      const rawStrength = localStorage.getItem(STRENGTH_KEY);
+      if (rawStrength) setStrength(JSON.parse(rawStrength));
+      const rawRowing = localStorage.getItem(ROWING_KEY);
+      if (rawRowing) setRowing(JSON.parse(rawRowing));
+    } catch (e) { /* localStorage no disponible: la app sigue funcionando sin historial */ }
+  }, []);
+
+  const saveGoal = (g) => {
+    setGoal(g);
+    try { localStorage.setItem(GOAL_KEY, JSON.stringify(g)); } catch (e) {}
+  };
+  const saveHistoryEntry = (entry) => {
+    setHistory((prev) => {
+      const next = [...prev.filter((h) => h.id !== entry.id), entry].sort((a, b) => new Date(a.date) - new Date(b.date));
+      try { localStorage.setItem(HISTORY_KEY, JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+  };
+  const deleteHistoryEntry = (id) => {
+    setHistory((prev) => {
+      const next = prev.filter((h) => h.id !== id);
+      try { localStorage.setItem(HISTORY_KEY, JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+  };
+
+  const saveStrengthEntry = (entry) => {
+    setStrength((prev) => {
+      const next = [...prev, entry].sort((a, b) => new Date(a.date) - new Date(b.date));
+      try { localStorage.setItem(STRENGTH_KEY, JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+  };
+  const deleteStrengthEntry = (id) => {
+    setStrength((prev) => {
+      const next = prev.filter((s) => s.id !== id);
+      try { localStorage.setItem(STRENGTH_KEY, JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+  };
+  const addStrengthEntry = () => {
+    if (!strengthDraft.title.trim()) return;
+    saveStrengthEntry({ id: `str-${Date.now()}`, date: strengthDraft.date, title: strengthDraft.title.trim(), notes: strengthDraft.notes.trim(), rpe: strengthDraft.rpe });
+    setStrengthDraft({ date: new Date().toISOString().slice(0, 10), title: "", notes: "", rpe: "normal" });
+  };
+
+  const saveRowingEntry = (entry) => {
+    setRowing((prev) => {
+      const next = [...prev, entry].sort((a, b) => new Date(a.date) - new Date(b.date));
+      try { localStorage.setItem(ROWING_KEY, JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+  };
+  const deleteRowingEntry = (id) => {
+    setRowing((prev) => {
+      const next = prev.filter((r) => r.id !== id);
+      try { localStorage.setItem(ROWING_KEY, JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+  };
+  const addRowingEntry = () => {
+    const dist = parseFloat(rowingDraft.distanceM);
+    const timeSec = parseClockToSec(rowingDraft.timeStr);
+    if (!dist || !timeSec) return;
+    const pace500 = (timeSec / dist) * 500;
+    saveRowingEntry({ id: `row-${Date.now()}`, date: rowingDraft.date, distanceM: dist, timeSec, pace500, hr: rowingDraft.hr ? Number(rowingDraft.hr) : null, notes: rowingDraft.notes.trim() });
+    setRowingDraft({ date: new Date().toISOString().slice(0, 10), distanceM: "", timeStr: "", hr: "", notes: "" });
+  };
+
+  const exportData = () => {
+    const payload = { version: 1, exportedAt: new Date().toISOString(), goal, history, strength, rowing };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `entrenador-datos-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+  const importData = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const payload = JSON.parse(ev.target.result);
+        if (!payload || (!payload.history && !payload.strength && !payload.rowing && !payload.goal)) throw new Error("El archivo no tiene el formato esperado.");
+        const ok = window.confirm("Esto reemplazará tu objetivo, historial de carreras y sesiones de fuerza guardados en este navegador. ¿Continuar?");
+        if (!ok) return;
+        if (payload.goal) saveGoal(payload.goal);
+        if (payload.history) { setHistory(payload.history); try { localStorage.setItem(HISTORY_KEY, JSON.stringify(payload.history)); } catch (er) {} }
+        if (payload.strength) { setStrength(payload.strength); try { localStorage.setItem(STRENGTH_KEY, JSON.stringify(payload.strength)); } catch (er) {} }
+        if (payload.rowing) { setRowing(payload.rowing); try { localStorage.setItem(ROWING_KEY, JSON.stringify(payload.rowing)); } catch (er) {} }
+        setImportMsg("Datos importados correctamente.");
+      } catch (err) {
+        setImportMsg("No se pudo importar: " + (err.message || "archivo inválido."));
+      }
+      setTimeout(() => setImportMsg(null), 5000);
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const analysis = useMemo(() => (splits ? computeAnalysis(splits) : null), [splits]);
+  const runWalk = useMemo(() => (points ? computeRunWalkStats(points) : null), [points]);
+  const totals = useMemo(() => {
+    if (!splits) return null;
+    const timeSec = splits.reduce((a, s) => a + (s.timeSec || s.paceSec || 0), 0);
+    const distanceKm = splits.length;
+    return { distanceKm, timeSec, avgPaceSec: timeSec / distanceKm, avgHr: mean(splits.map((s) => s.hr)), avgCadence: mean(splits.map((s) => s.cadence)) };
+  }, [splits]);
+
+  const handleFile = useCallback((e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setLoading(true); setError(null); setFileName(file.name); setSplits(null); setPoints(null); setDetailOpen(false);
+    const lower = file.name.toLowerCase();
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        let result; let rawPoints = null; let activityDate = null;
+        if (lower.endsWith(".gpx")) {
+          rawPoints = parseGPX(ev.target.result);
+          result = buildSplitsFromPoints(rawPoints);
+          const m = ev.target.result.match(/<time>([^<]+)<\/time>/);
+          if (m) activityDate = m[1];
+        } else if (lower.endsWith(".csv")) {
+          result = parseCSV(ev.target.result);
+        } else if (lower.endsWith(".fit")) {
+          const recs = parseFIT(ev.target.result);
+          rawPoints = buildPointsFromFIT(recs);
+          result = buildSplitsFromPoints(rawPoints);
+          const first = recs.find((r) => r.timestamp != null);
+          if (first) activityDate = new Date((first.timestamp + 631065600) * 1000).toISOString();
+        } else throw new Error("Formato no soportado. Sube un archivo .gpx, .csv o .fit exportado de Garmin o Strava.");
+        if (!result || result.length < 2) throw new Error("No se pudieron extraer suficientes datos por kilómetro de este archivo.");
+
+        const a = computeAnalysis(result);
+        const timeSec = result.reduce((s, x) => s + (x.timeSec || x.paceSec || 0), 0);
+        const distanceKm = result.length;
+        saveHistoryEntry({
+          id: `${file.name}-${Date.now()}`,
+          date: activityDate || new Date().toISOString(),
+          fileName: file.name,
+          distanceKm, timeSec, avgPaceSec: timeSec / distanceKm,
+          avgHr: mean(result.map((s) => s.hr)), avgCadence: mean(result.map((s) => s.cadence)),
+          decouplingPct: a.decouplingPct, splitDiffPct: a.splitDiffPct, avgPower: a.avgPower,
+        });
+        setSplits(result); setPoints(rawPoints);
+      } catch (err) {
+        setError(err.message || "No se pudo leer el archivo.");
+      } finally { setLoading(false); }
+    };
+    reader.onerror = () => { setError("Hubo un error leyendo el archivo."); setLoading(false); };
+    if (lower.endsWith(".fit")) reader.readAsArrayBuffer(file); else reader.readAsText(file);
+  }, []);
+
+  const reset = () => { setSplits(null); setPoints(null); setFileName(null); setError(null); setDetailOpen(false); };
+
+  const pv = analysis ? verdictPace(analysis) : null;
+  const cv = analysis ? verdictConsistency(analysis) : null;
+  const hv = analysis ? verdictHr(analysis) : null;
+  const cadv = analysis ? verdictCadence(analysis) : null;
+  const dv = analysis ? verdictDynamics(analysis) : null;
+  const pow = analysis ? verdictPower(analysis) : null;
+  const ev = analysis ? verdictElevation(analysis) : null;
+
+  const recommendations = useMemo(() => {
+    if (!analysis) return [];
+    const items = [pv, cv, hv, cadv, dv, ev].filter(Boolean);
+    const priority = items.filter((i) => i.tone === "bad").concat(items.filter((i) => i.tone === "warn"));
+    if (!priority.length) return ["Todos tus indicadores están en buen rango: mantén tu plan de entrenamiento actual y busca objetivos algo más ambiciosos en tu próxima carrera."];
+    return priority.slice(0, 3).map((i) => i.text);
+  }, [analysis, pv, cv, hv, cadv, dv, ev]);
+
+  const weeksLeft = weeksUntil(goal.raceDate);
+  const shortVerdict = analysis && totals ? buildShortVerdict(analysis, totals, goal) : null;
+  const focus = weeklyFocus(weeksLeft, analysis || {}, shortVerdict ? shortVerdict.gapSec : null);
+  const targetPaceSec = goal.targetTimeSec / goal.distanceKm;
+
+  const historyChartData = useMemo(() => history.map((h) => ({
+    km: new Date(h.date).toLocaleDateString("es-ES", { day: "2-digit", month: "short" }),
+    paceSec: h.avgPaceSec, hr: h.avgHr, cadence: h.avgCadence, decoupling: h.decouplingPct,
+  })), [history]);
+
+  const openGoalEditor = () => {
+    setGoalDraftDate(goal.raceDate); setGoalDraftTime(secToHMS(goal.targetTimeSec)); setGoalDraftDistance(String(goal.distanceKm)); setEditingGoal(true);
+  };
+  const saveGoalDraft = () => {
+    const t = parseClockToSec(goalDraftTime);
+    saveGoal({ distanceKm: parseFloat(goalDraftDistance) || goal.distanceKm, raceDate: goalDraftDate, targetTimeSec: t || goal.targetTimeSec });
+    setEditingGoal(false);
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: C.bg, color: C.chalk, fontFamily: "Inter, sans-serif", padding: "0 0 60px" }}>
+      <div style={{ maxWidth: 860, margin: "0 auto", padding: "40px 20px 0" }}>
+        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, letterSpacing: 2, color: C.red, textTransform: "uppercase", marginBottom: 10 }}>Tu entrenador de bolsillo</div>
+        <h1 style={{ fontFamily: "Oswald, sans-serif", fontWeight: 700, fontSize: "clamp(26px, 8vw, 40px)", lineHeight: 1.08, margin: "0 0 18px", textTransform: "uppercase", letterSpacing: 0.5 }}>
+          Cada carrera, un paso más cerca
+        </h1>
+
+        {/* OBJETIVO */}
+        <div style={{ background: C.surfaceAlt, border: `1px solid ${C.line}`, borderRadius: 8, padding: "14px 16px", marginBottom: 24 }}>
+          {!editingGoal ? (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+              <div>
+                <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, letterSpacing: 1, color: C.inkDim, textTransform: "uppercase", marginBottom: 4 }}>Tu objetivo</div>
+                <div style={{ fontFamily: "Oswald, sans-serif", fontSize: 17, color: C.chalk, textTransform: "uppercase" }}>
+                  {goal.distanceKm}K · {formatRaceDate(goal.raceDate)} · {secToHMS(goal.targetTimeSec)} ({secToPace(targetPaceSec)} /km)
+                </div>
+                <div style={{ fontSize: 12.5, color: C.ink, marginTop: 2 }}>
+                  {weeksLeft > 0 ? `Faltan ${weeksLeft} semana${weeksLeft === 1 ? "" : "s"}` : "¡Es esta semana!"}
+                </div>
+              </div>
+              <button onClick={openGoalEditor} style={{ background: "transparent", border: `1px solid ${C.line}`, color: C.ink, borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}>Editar</button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+              <label style={{ fontSize: 11, color: C.inkDim }}>Distancia (km)<input type="number" step="0.1" value={goalDraftDistance} onChange={(e) => setGoalDraftDistance(e.target.value)} style={inputStyle} /></label>
+              <label style={{ fontSize: 11, color: C.inkDim }}>Fecha<input type="date" value={goalDraftDate} onChange={(e) => setGoalDraftDate(e.target.value)} style={inputStyle} /></label>
+              <label style={{ fontSize: 11, color: C.inkDim }}>Tiempo objetivo (mm:ss)<input type="text" value={goalDraftTime} onChange={(e) => setGoalDraftTime(e.target.value)} style={inputStyle} /></label>
+              <button onClick={saveGoalDraft} style={{ background: C.red, border: "none", color: C.chalk, borderRadius: 6, padding: "8px 14px", fontSize: 12.5, cursor: "pointer" }}>Guardar</button>
+            </div>
+          )}
+        </div>
+
+        {/* PESTAÑAS */}
+        <div style={{ display: "flex", gap: 6, marginBottom: 22, flexWrap: "wrap" }}>
+          {[
+            { id: "running", label: "Carreras", Icon: Ico.Timer },
+            { id: "strength", label: "Fuerza", Icon: Ico.Dumbbell },
+            { id: "rowing", label: "Remo", Icon: Ico.Row },
+            { id: "summary", label: "Resumen", Icon: Ico.Layers },
+          ].map((t) => (
+            <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
+              display: "flex", alignItems: "center", gap: 6, background: activeTab === t.id ? C.surfaceAlt : "transparent",
+              border: `1px solid ${activeTab === t.id ? C.yellow : C.line}`, color: activeTab === t.id ? C.chalk : C.ink,
+              borderRadius: 6, padding: "7px 12px", fontSize: 12.5, cursor: "pointer", fontFamily: "'IBM Plex Mono', monospace",
+            }}>
+              <t.Icon size={13} color={activeTab === t.id ? C.yellow : C.inkDim} /> {t.label}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === "running" && (
+          <>
+
+          {!splits && (
+          <label className="raa-upload" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, border: `1px dashed ${C.line}`, borderRadius: 8, padding: "30px 16px", cursor: "pointer", background: C.surface, flexWrap: "wrap", textAlign: "center" }}>
+            <input type="file" accept=".gpx,.csv,.fit,text/csv,application/gpx+xml,text/xml,application/xml,application/octet-stream,*/*" onChange={handleFile} />
+            <Ico.Upload size={20} color={C.yellow} />
+            <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13.5, color: C.ink }}>{loading ? "Leyendo archivo…" : "Subir archivo .gpx, .csv o .fit"}</span>
+          </label>
+          )}
+
+        {error && (
+          <div className="raa-fade" style={{ marginTop: 16, display: "flex", gap: 10, alignItems: "flex-start", background: C.surfaceAlt, borderLeft: `3px solid ${C.bad}`, borderRadius: 4, padding: "12px 14px" }}>
+            <Ico.Alert size={16} color={C.bad} />
+            <p style={{ margin: 0, fontSize: 13.5, color: C.chalk, lineHeight: 1.5 }}>{error}</p>
+          </div>
+        )}
+
+        {totals && shortVerdict && (
+          <div className="raa-fade" style={{ marginTop: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 18, marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+              <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: C.inkDim, wordBreak: "break-all" }}>{fileName}</span>
+              <button onClick={reset} style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: `1px solid ${C.line}`, color: C.ink, borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}>
+                <Ico.Restart size={13} color={C.ink} /> Nuevo análisis
+              </button>
+            </div>
+
+            <div style={{ background: C.surfaceAlt, borderLeft: `3px solid ${C.red}`, borderRadius: 4, padding: "16px" }}>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, letterSpacing: 1, color: C.red, textTransform: "uppercase", marginBottom: 6 }}>Veredicto</div>
+              <p style={{ margin: 0, fontSize: 15, lineHeight: 1.55, color: C.chalk }}>{shortVerdict.text}</p>
+            </div>
+
+            <div style={{ background: C.surfaceAlt, borderLeft: `3px solid ${C.yellow}`, borderRadius: 4, padding: "16px", marginTop: 10 }}>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, letterSpacing: 1, color: C.yellow, textTransform: "uppercase", marginBottom: 6 }}>Foco de esta semana</div>
+              <p style={{ margin: 0, fontSize: 15, lineHeight: 1.55, color: C.chalk }}>{focus}</p>
+            </div>
+
+            <p style={{ fontSize: 11.5, color: C.inkDim, margin: "10px 0 0" }}>Guardado en tu historial ✓ (solo en este navegador)</p>
+
+            <button onClick={() => setDetailOpen((v) => !v)} style={{ marginTop: 18, background: "transparent", border: `1px solid ${C.line}`, color: C.ink, borderRadius: 6, padding: "9px 12px", fontSize: 12.5, cursor: "pointer", width: "100%" }}>
+              {detailOpen ? "Ocultar análisis completo ▲" : "Ver análisis completo (gráficas, splits) ▼"}
+            </button>
+
+            {detailOpen && (
+              <div style={{ marginTop: 22 }}>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <StatCard label="Distancia" value={totals.distanceKm} unit="km" />
+                  <StatCard label="Tiempo" value={secToHMS(totals.timeSec)} />
+                  <StatCard label="Ritmo medio" value={secToPace(totals.avgPaceSec)} unit="/km" />
+                  {analysis.hasHr && <StatCard label="FC media" value={Math.round(totals.avgHr)} unit="ppm" />}
+                  {analysis.hasCad && <StatCard label="Cadencia" value={Math.round(totals.avgCadence)} unit="spm" />}
+                  {runWalk && runWalk.walkSec > 5 && <StatCard label="Caminando" value={secToHMS(runWalk.walkSec)} />}
+                </div>
+
+                <LaneDivider />
+                <LapLabel n={1} title="Ritmo" />
+                <LineChartSVG data={splits} yKey="paceSec" color={C.red} height={220} formatValue={secToPace} />
+                <VerdictCard verdict={pv} Icon={Ico.Timer} />
+                <VerdictCard verdict={cv} Icon={Ico.Timer} />
+
+                {analysis.hasHr && (
+                  <>
+                    <LaneDivider />
+                    <LapLabel n={2} title="Frecuencia cardíaca" />
+                    <LineChartSVG data={splits} yKey="hr" color={C.yellow} height={220} formatValue={(v) => Math.round(v)} />
+                    <VerdictCard verdict={hv} Icon={Ico.Heart} />
+                  </>
+                )}
+
+                {analysis.hasCad && (
+                  <>
+                    <LaneDivider />
+                    <LapLabel n={3} title="Cadencia" />
+                    <LineChartSVG data={splits} yKey="cadence" color={C.good} height={220} formatValue={(v) => Math.round(v)} />
+                    <VerdictCard verdict={cadv} Icon={Ico.Foot} />
+                  </>
+                )}
+
+                {(analysis.hasPower || analysis.hasVO || analysis.hasGCT || analysis.hasVR || analysis.hasStride) && (
+                  <>
+                    <LaneDivider />
+                    <LapLabel n={4} title="Dinámica de carrera" />
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                      {analysis.hasPower && <StatCard label="Potencia media" value={Math.round(analysis.avgPower)} unit="W" />}
+                      {analysis.hasVO && <StatCard label="Oscilación vertical" value={analysis.avgVO.toFixed(1)} unit="cm" />}
+                      {analysis.hasGCT && <StatCard label="Contacto suelo" value={Math.round(analysis.avgGCT)} unit="ms" />}
+                      {analysis.hasVR && <StatCard label="Ratio vertical" value={analysis.avgVR.toFixed(1)} unit="%" />}
+                      {analysis.hasStride && <StatCard label="Zancada" value={analysis.avgStride.toFixed(2)} unit="m" />}
+                    </div>
+                    <VerdictCard verdict={dv} Icon={Ico.Foot} />
+                    <VerdictCard verdict={pow} Icon={Ico.Flame} />
+                  </>
+                )}
+
+                {analysis.hasElev && (
+                  <>
+                    <LaneDivider />
+                    <LapLabel n={5} title="Elevación" />
+                    <BarChartSVG data={splits} yKey="elevGain" height={200} />
+                    <VerdictCard verdict={ev} Icon={Ico.Mountain} />
+                  </>
+                )}
+
+                <LaneDivider />
+                <LapLabel n={6} title="Plan para mejorar" />
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+                  {recommendations.map((r, i) => (
+                    <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                      <Ico.Flame size={15} color={C.red} />
+                      <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: C.chalk }}>{r}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ marginTop: 30 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, color: C.inkDim, fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, letterSpacing: 1 }}>
+                    <Ico.Clipboard size={13} color={C.inkDim} /> SPLITS POR KILÓMETRO
+                  </div>
+                  <div style={{ border: `1px solid ${C.line}`, borderRadius: 6, overflow: "hidden" }}>
+                    {splits.map((s, i) => {
+                      const isBest = analysis.bestKm && s.km === analysis.bestKm.km;
+                      const isWorst = analysis.worstKm && s.km === analysis.worstKm.km;
+                      return (
+                        <div key={i} className="raa-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", borderBottom: i < splits.length - 1 ? `1px dashed ${C.line}` : "none", borderLeft: isBest ? `3px solid ${C.yellow}` : isWorst ? `3px solid ${C.red}` : "3px solid transparent", background: C.surface, fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, gap: 6, flexWrap: "wrap" }}>
+                          <span style={{ color: C.ink, minWidth: 46 }}>KM {s.km}</span>
+                          <span style={{ color: C.chalk, flex: 1, textAlign: "center" }}>{secToPace(s.paceSec)} /km</span>
+                          <span style={{ color: C.ink, minWidth: 64, textAlign: "center" }}>{s.hr ? `${Math.round(s.hr)} ppm` : "—"}</span>
+                          <span style={{ color: C.inkDim, minWidth: 80, textAlign: "right", fontSize: 10.5 }}>{isBest ? "MÁS RÁPIDA" : isWorst ? "MÁS LENTA" : ""}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <p style={{ marginTop: 24, fontSize: 11.5, color: C.inkDim, lineHeight: 1.5 }}>
+                  Este análisis es una estimación calculada a partir de tu archivo y puede variar ligeramente frente a las métricas oficiales de tu reloj o app.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {history.length > 0 && (
+          <div className="raa-fade" style={{ marginTop: 40 }}>
+            <LaneDivider />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4, flexWrap: "wrap", gap: 6 }}>
+              <span style={{ fontFamily: "Oswald, sans-serif", fontSize: 22, fontWeight: 600, color: C.chalk, textTransform: "uppercase" }}>Tu evolución</span>
+              <span style={{ fontSize: 11, color: C.inkDim, fontFamily: "'IBM Plex Mono', monospace" }}>{history.length} carrera{history.length === 1 ? "" : "s"} guardada{history.length === 1 ? "" : "s"}</span>
+            </div>
+
+            <p style={{ fontSize: 12.5, color: C.ink, marginTop: 10, marginBottom: 4 }}>Ritmo medio vs. tu objetivo</p>
+            <LineChartSVG data={historyChartData} yKey="paceSec" color={C.red} height={200} formatValue={secToPace} refValue={targetPaceSec} refLabel={`objetivo ${secToPace(targetPaceSec)}`} unitPrefix="" />
+
+            {historyChartData.some((h) => h.decoupling != null) && (
+              <>
+                <p style={{ fontSize: 12.5, color: C.ink, marginTop: 18, marginBottom: 4 }}>Desacople cardíaco</p>
+                <LineChartSVG data={historyChartData} yKey="decoupling" color={C.yellow} height={160} formatValue={(v) => v.toFixed(1) + "%"} unitPrefix="" />
+              </>
+            )}
+
+            <div style={{ marginTop: 18, border: `1px solid ${C.line}`, borderRadius: 6, overflow: "hidden" }}>
+              {[...history].reverse().map((h) => (
+                <div key={h.id} className="raa-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", borderBottom: `1px dashed ${C.line}`, background: C.surface, fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ color: C.ink, minWidth: 56 }}>{new Date(h.date).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}</span>
+                  <span style={{ color: C.chalk, minWidth: 50 }}>{h.distanceKm} km</span>
+                  <span style={{ color: C.chalk, flex: 1, textAlign: "center" }}>{secToPace(h.avgPaceSec)} /km</span>
+                  <span style={{ color: C.ink, minWidth: 64, textAlign: "center" }}>{h.avgHr ? `${Math.round(h.avgHr)} ppm` : "—"}</span>
+                  <button onClick={() => deleteHistoryEntry(h.id)} style={{ background: "transparent", border: "none", color: C.inkDim, cursor: "pointer", fontSize: 14, padding: "0 4px" }}>✕</button>
+                </div>
+              ))}
+            </div>
+            <p style={{ marginTop: 10, fontSize: 11, color: C.inkDim }}>Se guarda solo en este navegador/dispositivo. Si cambias de navegador o borras datos de sitio, se pierde.</p>
+          </div>
+        )}
+          </>
+        )}
+
+        {activeTab === "strength" && (
+          <div className="raa-fade">
+            <LapLabel n={1} title="Fuerza con gomas" />
+            <p style={{ fontSize: 13, color: C.ink, marginTop: 8, marginBottom: 16 }}>Registra tus sesiones de fuerza/bandas de resistencia. No hace falta detalle técnico — con la rutina y cómo te sentiste basta para ver el patrón con el tiempo.</p>
+
+            <div style={{ background: C.surfaceAlt, border: `1px solid ${C.line}`, borderRadius: 8, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <label style={{ fontSize: 11, color: C.inkDim }}>Fecha<input type="date" value={strengthDraft.date} onChange={(e) => setStrengthDraft({ ...strengthDraft, date: e.target.value })} style={inputStyle} /></label>
+                <label style={{ fontSize: 11, color: C.inkDim, flex: 1, minWidth: 180 }}>Rutina<input type="text" placeholder="Ej. Gomas tren inferior" value={strengthDraft.title} onChange={(e) => setStrengthDraft({ ...strengthDraft, title: e.target.value })} style={{ ...inputStyle, width: "100%" }} /></label>
+                <label style={{ fontSize: 11, color: C.inkDim }}>Sensación
+                  <select value={strengthDraft.rpe} onChange={(e) => setStrengthDraft({ ...strengthDraft, rpe: e.target.value })} style={inputStyle}>
+                    <option value="facil">Fácil</option><option value="normal">Normal</option><option value="dura">Dura</option>
+                  </select>
+                </label>
+              </div>
+              <label style={{ fontSize: 11, color: C.inkDim }}>Notas (opcional)<input type="text" placeholder="Series, repeticiones, molestias..." value={strengthDraft.notes} onChange={(e) => setStrengthDraft({ ...strengthDraft, notes: e.target.value })} style={{ ...inputStyle, width: "100%" }} /></label>
+              <button onClick={addStrengthEntry} style={{ alignSelf: "flex-start", background: C.red, border: "none", color: C.chalk, borderRadius: 6, padding: "8px 14px", fontSize: 12.5, cursor: "pointer" }}>Guardar sesión</button>
+            </div>
+
+            {strength.length > 0 && (
+              <div style={{ marginTop: 20, border: `1px solid ${C.line}`, borderRadius: 6, overflow: "hidden" }}>
+                {[...strength].reverse().map((s) => (
+                  <div key={s.id} className="raa-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderBottom: `1px dashed ${C.line}`, background: C.surface, gap: 8, flexWrap: "wrap" }}>
+                    <div style={{ flex: 1, minWidth: 160 }}>
+                      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: C.inkDim }}>{new Date(s.date + "T00:00:00").toLocaleDateString("es-ES", { day: "2-digit", month: "short" })} · {s.rpe === "facil" ? "fácil" : s.rpe === "dura" ? "dura" : "normal"}</div>
+                      <div style={{ fontSize: 13.5, color: C.chalk, marginTop: 2 }}>{s.title}</div>
+                      {s.notes && <div style={{ fontSize: 12, color: C.ink, marginTop: 2 }}>{s.notes}</div>}
+                    </div>
+                    <button onClick={() => deleteStrengthEntry(s.id)} style={{ background: "transparent", border: "none", color: C.inkDim, cursor: "pointer", fontSize: 14, padding: "0 4px" }}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "rowing" && (
+          <div className="raa-fade">
+            <LapLabel n={1} title="Remo indoor" />
+            <p style={{ fontSize: 13, color: C.ink, marginTop: 8, marginBottom: 16 }}>Registra tus sesiones de remo. Calculamos el ritmo por 500 m automáticamente.</p>
+
+            <div style={{ background: C.surfaceAlt, border: `1px solid ${C.line}`, borderRadius: 8, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <label style={{ fontSize: 11, color: C.inkDim }}>Fecha<input type="date" value={rowingDraft.date} onChange={(e) => setRowingDraft({ ...rowingDraft, date: e.target.value })} style={inputStyle} /></label>
+                <label style={{ fontSize: 11, color: C.inkDim }}>Distancia (m)<input type="number" placeholder="2000" value={rowingDraft.distanceM} onChange={(e) => setRowingDraft({ ...rowingDraft, distanceM: e.target.value })} style={inputStyle} /></label>
+                <label style={{ fontSize: 11, color: C.inkDim }}>Tiempo (mm:ss)<input type="text" placeholder="8:15" value={rowingDraft.timeStr} onChange={(e) => setRowingDraft({ ...rowingDraft, timeStr: e.target.value })} style={inputStyle} /></label>
+                <label style={{ fontSize: 11, color: C.inkDim }}>FC media (opcional)<input type="number" placeholder="150" value={rowingDraft.hr} onChange={(e) => setRowingDraft({ ...rowingDraft, hr: e.target.value })} style={inputStyle} /></label>
+              </div>
+              <label style={{ fontSize: 11, color: C.inkDim }}>Notas (opcional)<input type="text" value={rowingDraft.notes} onChange={(e) => setRowingDraft({ ...rowingDraft, notes: e.target.value })} style={{ ...inputStyle, width: "100%" }} /></label>
+              <button onClick={addRowingEntry} style={{ alignSelf: "flex-start", background: C.red, border: "none", color: C.chalk, borderRadius: 6, padding: "8px 14px", fontSize: 12.5, cursor: "pointer" }}>Guardar sesión</button>
+            </div>
+
+            {rowing.length > 0 && (
+              <>
+                <div style={{ marginTop: 20 }}>
+                  <LineChartSVG
+                    data={rowing.map((r) => ({ km: new Date(r.date + "T00:00:00").toLocaleDateString("es-ES", { day: "2-digit", month: "short" }), pace500: r.pace500 }))}
+                    yKey="pace500" color={C.good} height={180} formatValue={secToPace} unitPrefix=""
+                  />
+                </div>
+                <div style={{ marginTop: 12, border: `1px solid ${C.line}`, borderRadius: 6, overflow: "hidden" }}>
+                  {[...rowing].reverse().map((r) => (
+                    <div key={r.id} className="raa-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", borderBottom: `1px dashed ${C.line}`, background: C.surface, fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ color: C.ink, minWidth: 56 }}>{new Date(r.date + "T00:00:00").toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}</span>
+                      <span style={{ color: C.chalk, minWidth: 60 }}>{r.distanceM} m</span>
+                      <span style={{ color: C.chalk, flex: 1, textAlign: "center" }}>{secToPace(r.pace500)} /500m</span>
+                      <span style={{ color: C.ink, minWidth: 60, textAlign: "center" }}>{r.hr ? `${r.hr} ppm` : "—"}</span>
+                      <button onClick={() => deleteRowingEntry(r.id)} style={{ background: "transparent", border: "none", color: C.inkDim, cursor: "pointer", fontSize: 14, padding: "0 4px" }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {activeTab === "summary" && (
+          <div className="raa-fade">
+            <LapLabel n={1} title="Resumen global" />
+            {(() => {
+              const all = [
+                ...history.map((h) => ({ id: h.id, date: h.date, type: "Carrera", Icon: Ico.Timer, detail: `${h.distanceKm} km · ${secToPace(h.avgPaceSec)} /km` })),
+                ...strength.map((s) => ({ id: s.id, date: s.date, type: "Fuerza", Icon: Ico.Dumbbell, detail: s.title })),
+                ...rowing.map((r) => ({ id: r.id, date: r.date, type: "Remo", Icon: Ico.Row, detail: `${r.distanceM} m · ${secToPace(r.pace500)} /500m` })),
+              ].sort((a, b) => new Date(b.date) - new Date(a.date));
+              const weekAgo = Date.now() - 7 * 86400000;
+              const thisWeek = all.filter((x) => new Date(x.date).getTime() >= weekAgo);
+              const counts = { Carrera: 0, Fuerza: 0, Remo: 0 };
+              thisWeek.forEach((x) => counts[x.type]++);
+              if (!all.length) return <p style={{ fontSize: 13.5, color: C.ink }}>Todavía no has guardado ninguna sesión. Sube una carrera o registra fuerza/remo para verlas aquí.</p>;
+              return (
+                <>
+                  <p style={{ fontSize: 13, color: C.ink, marginTop: 8, marginBottom: 16 }}>Últimos 7 días: {counts.Carrera} carrera{counts.Carrera === 1 ? "" : "s"} · {counts.Fuerza} sesión{counts.Fuerza === 1 ? "" : "es"} de fuerza · {counts.Remo} de remo.</p>
+                  <div style={{ border: `1px solid ${C.line}`, borderRadius: 6, overflow: "hidden" }}>
+                    {all.map((x) => (
+                      <div key={x.type + x.id} className="raa-row" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderBottom: `1px dashed ${C.line}`, background: C.surface }}>
+                        <x.Icon size={14} color={C.inkDim} />
+                        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: C.inkDim, minWidth: 58 }}>{new Date(x.date).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}</span>
+                        <span style={{ fontSize: 11, color: C.yellow, minWidth: 58, textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>{x.type}</span>
+                        <span style={{ fontSize: 13, color: C.chalk }}>{x.detail}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* DATOS: EXPORTAR / IMPORTAR */}
+        <LaneDivider />
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+          <button onClick={exportData} style={{ background: "transparent", border: `1px solid ${C.line}`, color: C.ink, borderRadius: 6, padding: "8px 12px", fontSize: 12.5, cursor: "pointer" }}>Exportar datos (.json)</button>
+          <label style={{ background: "transparent", border: `1px solid ${C.line}`, color: C.ink, borderRadius: 6, padding: "8px 12px", fontSize: 12.5, cursor: "pointer" }}>
+            Importar datos
+            <input type="file" accept=".json,application/json" onChange={importData} style={{ display: "none" }} />
+          </label>
+          {importMsg && <span style={{ fontSize: 12, color: C.good }}>{importMsg}</span>}
+        </div>
+        <p style={{ fontSize: 11, color: C.inkDim, marginBottom: 30 }}>Exporta tu objetivo, historial de carreras, fuerza y remo a un archivo. Guárdalo o súbelo a un repositorio propio como respaldo; luego puedes importarlo en cualquier navegador con este mismo archivo.</p>
+      </div>
+    </div>
+  );
+}
+
+
+ReactDOM.createRoot(document.getElementById("root")).render(<RaceAnalyzer />);
+</script>
+</body>
+</html>
