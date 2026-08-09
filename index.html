@@ -707,6 +707,44 @@ function VerdictCard({ verdict, Icon }) {
     </div>
   );
 }
+const MUSCLE_GROUPS = [
+  { id: "upper", label: "Tren superior" },
+  { id: "core", label: "Core" },
+  { id: "quads", label: "Cuádriceps" },
+  { id: "hamstrings", label: "Isquios/Glúteos" },
+  { id: "calves", label: "Gemelos" },
+];
+
+function colorForFreshness(days) {
+  if (days == null) return C.line;
+  if (days <= 3) return C.good;
+  if (days <= 7) return C.yellow;
+  return C.bad;
+}
+
+function BodyDiagram({ freshness, height = 210 }) {
+  // freshness: { quads, hamstrings, calves, core, upper } -> días desde la última vez, o null
+  const upperC = colorForFreshness(freshness.upper);
+  const coreC = colorForFreshness(freshness.core);
+  const quadsC = colorForFreshness(freshness.quads);
+  const hamsC = colorForFreshness(freshness.hamstrings);
+  const calvesC = colorForFreshness(freshness.calves);
+  return (
+    <svg viewBox="0 0 120 220" width={height * 0.6} height={height}>
+      <circle cx="60" cy="18" r="13" fill="none" stroke={C.inkDim} strokeWidth="2" />
+      <rect x="20" y="42" width="14" height="66" rx="6" fill={upperC} opacity="0.85" />
+      <rect x="86" y="42" width="14" height="66" rx="6" fill={upperC} opacity="0.85" />
+      <rect x="38" y="38" width="44" height="52" rx="6" fill={upperC} opacity="0.85" />
+      <rect x="42" y="88" width="36" height="34" rx="5" fill={coreC} opacity="0.85" />
+      <rect x="40" y="120" width="40" height="22" rx="5" fill={hamsC} opacity="0.85" />
+      <rect x="38" y="144" width="18" height="44" rx="5" fill={quadsC} opacity="0.85" />
+      <rect x="64" y="144" width="18" height="44" rx="5" fill={quadsC} opacity="0.85" />
+      <rect x="39" y="190" width="16" height="28" rx="4" fill={calvesC} opacity="0.85" />
+      <rect x="65" y="190" width="16" height="28" rx="4" fill={calvesC} opacity="0.85" />
+    </svg>
+  );
+}
+
 function LapLabel({ n, title }) {
   return (
     <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
@@ -730,6 +768,46 @@ function StatCard({ label, value, unit }) {
 /* ---------------------------------------------------------------
    MAIN COMPONENT
 ---------------------------------------------------------------- */
+function computeMuscleFreshness(strength) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const freshness = {};
+  MUSCLE_GROUPS.forEach((g) => { freshness[g.id] = null; });
+  strength.forEach((s) => {
+    if (!s.muscles) return;
+    const days = Math.floor((today - new Date(s.date + "T00:00:00")) / 86400000);
+    s.muscles.forEach((m) => { if (freshness[m] == null || days < freshness[m]) freshness[m] = days; });
+  });
+  return freshness;
+}
+
+function weekKey(dateStr) {
+  const dt = new Date(dateStr);
+  const day = (dt.getDay() + 6) % 7; // lunes = 0
+  dt.setDate(dt.getDate() - day); dt.setHours(0, 0, 0, 0);
+  return dt.toISOString().slice(0, 10);
+}
+function weeklyBreakdown(history, strength, rowing) {
+  const weeks = {};
+  const ensure = (k) => { if (!weeks[k]) weeks[k] = { week: k, carreras: 0, fuerza: 0, remo: 0, paceSum: 0, paceCnt: 0 }; return weeks[k]; };
+  history.forEach((h) => { const w = ensure(weekKey(h.date)); w.carreras++; w.paceSum += h.avgPaceSec; w.paceCnt++; });
+  strength.forEach((s) => { ensure(weekKey(s.date + "T00:00:00")).fuerza++; });
+  rowing.forEach((r) => { ensure(weekKey(r.date + "T00:00:00")).remo++; });
+  return Object.values(weeks).map((w) => ({ ...w, avgPace: w.paceCnt ? w.paceSum / w.paceCnt : null })).sort((a, b) => new Date(b.week) - new Date(a.week));
+}
+function crossTrainingInsight(weeks) {
+  const withRuns = weeks.filter((w) => w.avgPace != null);
+  if (withRuns.length < 4) return "Sigo acumulando datos — con 3-4 semanas más de historial podré decirte si la fuerza y el remo se están notando en tu ritmo.";
+  const withComp = withRuns.filter((w) => w.fuerza + w.remo > 0);
+  const withoutComp = withRuns.filter((w) => w.fuerza + w.remo === 0);
+  if (withComp.length < 2 || withoutComp.length < 2) return "Necesito más semanas mezcladas (con y sin fuerza/remo) para comparar con algo de fiabilidad.";
+  const avgWith = mean(withComp.map((w) => w.avgPace));
+  const avgWithout = mean(withoutComp.map((w) => w.avgPace));
+  const diff = avgWithout - avgWith;
+  if (diff > 5) return `En semanas con fuerza o remo, tu ritmo medio fue ${secToPace(Math.abs(diff))} /km más rápido que en semanas sin ellos (${withComp.length} vs ${withoutComp.length} semanas comparadas). Sigue combinándolo.`;
+  if (diff < -5) return `De momento no hay diferencia clara a favor de las semanas con complementario (${withComp.length} vs ${withoutComp.length} semanas) — es pronto, el efecto de la fuerza suele notarse en varias semanas, no de una a otra.`;
+  return `Tu ritmo es similar con o sin fuerza/remo esa misma semana — es lo esperable a corto plazo, el beneficio real se ve más adelante si eres constante.`;
+}
+
 const inputStyle = { display: "block", marginTop: 4, background: C.bg, border: `1px solid ${C.line}`, borderRadius: 4, color: C.chalk, padding: "7px 8px", fontSize: 13, fontFamily: "'IBM Plex Mono', monospace", width: 140 };
 
 function RaceAnalyzer() {
@@ -742,7 +820,7 @@ function RaceAnalyzer() {
   const [activeTab, setActiveTab] = useState("running");
   const [history, setHistory] = useState([]);
   const [strength, setStrength] = useState([]);
-  const [strengthDraft, setStrengthDraft] = useState({ date: new Date().toISOString().slice(0, 10), title: "", notes: "", rpe: "normal" });
+  const [strengthDraft, setStrengthDraft] = useState({ date: new Date().toISOString().slice(0, 10), title: "", notes: "", rpe: "normal", muscles: [] });
   const [rowing, setRowing] = useState([]);
   const [rowingDraft, setRowingDraft] = useState({ date: new Date().toISOString().slice(0, 10), distanceM: "", timeStr: "", hr: "", notes: "" });
   const [importMsg, setImportMsg] = useState(null);
@@ -800,8 +878,11 @@ function RaceAnalyzer() {
   };
   const addStrengthEntry = () => {
     if (!strengthDraft.title.trim()) return;
-    saveStrengthEntry({ id: `str-${Date.now()}`, date: strengthDraft.date, title: strengthDraft.title.trim(), notes: strengthDraft.notes.trim(), rpe: strengthDraft.rpe });
-    setStrengthDraft({ date: new Date().toISOString().slice(0, 10), title: "", notes: "", rpe: "normal" });
+    saveStrengthEntry({ id: `str-${Date.now()}`, date: strengthDraft.date, title: strengthDraft.title.trim(), notes: strengthDraft.notes.trim(), rpe: strengthDraft.rpe, muscles: strengthDraft.muscles });
+    setStrengthDraft({ date: new Date().toISOString().slice(0, 10), title: "", notes: "", rpe: "normal", muscles: [] });
+  };
+  const toggleDraftMuscle = (id) => {
+    setStrengthDraft((d) => ({ ...d, muscles: d.muscles.includes(id) ? d.muscles.filter((m) => m !== id) : [...d.muscles, id] }));
   };
 
   const saveRowingEntry = (entry) => {
@@ -941,6 +1022,10 @@ function RaceAnalyzer() {
     km: new Date(h.date).toLocaleDateString("es-ES", { day: "2-digit", month: "short" }),
     paceSec: h.avgPaceSec, hr: h.avgHr, cadence: h.avgCadence, decoupling: h.decouplingPct,
   })), [history]);
+
+  const muscleFreshness = useMemo(() => computeMuscleFreshness(strength), [strength]);
+  const weeklyStats = useMemo(() => weeklyBreakdown(history, strength, rowing), [history, strength, rowing]);
+  const crossInsight = useMemo(() => crossTrainingInsight(weeklyStats), [weeklyStats]);
 
   const openGoalEditor = () => {
     setGoalDraftDate(goal.raceDate); setGoalDraftTime(secToHMS(goal.targetTimeSec)); setGoalDraftDistance(String(goal.distanceKm)); setEditingGoal(true);
@@ -1182,20 +1267,49 @@ function RaceAnalyzer() {
         {activeTab === "strength" && (
           <div className="raa-fade">
             <LapLabel n={1} title="Fuerza con gomas" />
-            <p style={{ fontSize: 13, color: C.ink, marginTop: 8, marginBottom: 16 }}>Registra tus sesiones de fuerza/bandas de resistencia. No hace falta detalle técnico — con la rutina y cómo te sentiste basta para ver el patrón con el tiempo.</p>
+            <p style={{ fontSize: 13, color: C.ink, marginTop: 8, marginBottom: 16 }}>Registra tus sesiones y marca qué trabajaste. Así vemos qué llevas tiempo sin tocar.</p>
 
-            <div style={{ background: C.surfaceAlt, border: `1px solid ${C.line}`, borderRadius: 8, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <label style={{ fontSize: 11, color: C.inkDim }}>Fecha<input type="date" value={strengthDraft.date} onChange={(e) => setStrengthDraft({ ...strengthDraft, date: e.target.value })} style={inputStyle} /></label>
-                <label style={{ fontSize: 11, color: C.inkDim, flex: 1, minWidth: 180 }}>Rutina<input type="text" placeholder="Ej. Gomas tren inferior" value={strengthDraft.title} onChange={(e) => setStrengthDraft({ ...strengthDraft, title: e.target.value })} style={{ ...inputStyle, width: "100%" }} /></label>
-                <label style={{ fontSize: 11, color: C.inkDim }}>Sensación
-                  <select value={strengthDraft.rpe} onChange={(e) => setStrengthDraft({ ...strengthDraft, rpe: e.target.value })} style={inputStyle}>
-                    <option value="facil">Fácil</option><option value="normal">Normal</option><option value="dura">Dura</option>
-                  </select>
-                </label>
+            <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-start" }}>
+              <div style={{ background: C.surfaceAlt, border: `1px solid ${C.line}`, borderRadius: 8, padding: 16, display: "flex", flexDirection: "column", gap: 10, flex: "1 1 320px" }}>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <label style={{ fontSize: 11, color: C.inkDim }}>Fecha<input type="date" value={strengthDraft.date} onChange={(e) => setStrengthDraft({ ...strengthDraft, date: e.target.value })} style={inputStyle} /></label>
+                  <label style={{ fontSize: 11, color: C.inkDim, flex: 1, minWidth: 180 }}>Rutina<input type="text" placeholder="Ej. Gomas tren inferior" value={strengthDraft.title} onChange={(e) => setStrengthDraft({ ...strengthDraft, title: e.target.value })} style={{ ...inputStyle, width: "100%" }} /></label>
+                  <label style={{ fontSize: 11, color: C.inkDim }}>Sensación
+                    <select value={strengthDraft.rpe} onChange={(e) => setStrengthDraft({ ...strengthDraft, rpe: e.target.value })} style={inputStyle}>
+                      <option value="facil">Fácil</option><option value="normal">Normal</option><option value="dura">Dura</option>
+                    </select>
+                  </label>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: C.inkDim, marginBottom: 6 }}>Músculos trabajados</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {MUSCLE_GROUPS.map((g) => {
+                      const on = strengthDraft.muscles.includes(g.id);
+                      return (
+                        <button key={g.id} onClick={() => toggleDraftMuscle(g.id)} type="button" style={{
+                          background: on ? C.red : "transparent", border: `1px solid ${on ? C.red : C.line}`, color: on ? C.chalk : C.ink,
+                          borderRadius: 14, padding: "5px 11px", fontSize: 11.5, cursor: "pointer",
+                        }}>{g.label}</button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <label style={{ fontSize: 11, color: C.inkDim }}>Notas (opcional)<input type="text" placeholder="Series, repeticiones, molestias..." value={strengthDraft.notes} onChange={(e) => setStrengthDraft({ ...strengthDraft, notes: e.target.value })} style={{ ...inputStyle, width: "100%" }} /></label>
+                <button onClick={addStrengthEntry} style={{ alignSelf: "flex-start", background: C.red, border: "none", color: C.chalk, borderRadius: 6, padding: "8px 14px", fontSize: 12.5, cursor: "pointer" }}>Guardar sesión</button>
               </div>
-              <label style={{ fontSize: 11, color: C.inkDim }}>Notas (opcional)<input type="text" placeholder="Series, repeticiones, molestias..." value={strengthDraft.notes} onChange={(e) => setStrengthDraft({ ...strengthDraft, notes: e.target.value })} style={{ ...inputStyle, width: "100%" }} /></label>
-              <button onClick={addStrengthEntry} style={{ alignSelf: "flex-start", background: C.red, border: "none", color: C.chalk, borderRadius: 6, padding: "8px 14px", fontSize: 12.5, cursor: "pointer" }}>Guardar sesión</button>
+
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 11, color: C.inkDim, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1, fontFamily: "'IBM Plex Mono', monospace" }}>Última vez por zona</div>
+                <BodyDiagram freshness={muscleFreshness} height={200} />
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 10, textAlign: "left" }}>
+                  {MUSCLE_GROUPS.map((g) => (
+                    <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: C.ink }}>
+                      <span style={{ width: 9, height: 9, borderRadius: 2, background: colorForFreshness(muscleFreshness[g.id]), flexShrink: 0 }} />
+                      {g.label} — {muscleFreshness[g.id] == null ? "nunca" : muscleFreshness[g.id] === 0 ? "hoy" : `hace ${muscleFreshness[g.id]}d`}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
 
             {strength.length > 0 && (
@@ -1205,6 +1319,7 @@ function RaceAnalyzer() {
                     <div style={{ flex: 1, minWidth: 160 }}>
                       <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: C.inkDim }}>{new Date(s.date + "T00:00:00").toLocaleDateString("es-ES", { day: "2-digit", month: "short" })} · {s.rpe === "facil" ? "fácil" : s.rpe === "dura" ? "dura" : "normal"}</div>
                       <div style={{ fontSize: 13.5, color: C.chalk, marginTop: 2 }}>{s.title}</div>
+                      {s.muscles && s.muscles.length > 0 && <div style={{ fontSize: 11, color: C.yellow, marginTop: 2 }}>{s.muscles.map((m) => MUSCLE_GROUPS.find((g) => g.id === m)?.label).join(" · ")}</div>}
                       {s.notes && <div style={{ fontSize: 12, color: C.ink, marginTop: 2 }}>{s.notes}</div>}
                     </div>
                     <button onClick={() => deleteStrengthEntry(s.id)} style={{ background: "transparent", border: "none", color: C.inkDim, cursor: "pointer", fontSize: 14, padding: "0 4px" }}>✕</button>
@@ -1257,34 +1372,66 @@ function RaceAnalyzer() {
 
         {activeTab === "summary" && (
           <div className="raa-fade">
-            <LapLabel n={1} title="Resumen global" />
-            {(() => {
-              const all = [
-                ...history.map((h) => ({ id: h.id, date: h.date, type: "Carrera", Icon: Ico.Timer, detail: `${h.distanceKm} km · ${secToPace(h.avgPaceSec)} /km` })),
-                ...strength.map((s) => ({ id: s.id, date: s.date, type: "Fuerza", Icon: Ico.Dumbbell, detail: s.title })),
-                ...rowing.map((r) => ({ id: r.id, date: r.date, type: "Remo", Icon: Ico.Row, detail: `${r.distanceM} m · ${secToPace(r.pace500)} /500m` })),
-              ].sort((a, b) => new Date(b.date) - new Date(a.date));
-              const weekAgo = Date.now() - 7 * 86400000;
-              const thisWeek = all.filter((x) => new Date(x.date).getTime() >= weekAgo);
-              const counts = { Carrera: 0, Fuerza: 0, Remo: 0 };
-              thisWeek.forEach((x) => counts[x.type]++);
-              if (!all.length) return <p style={{ fontSize: 13.5, color: C.ink }}>Todavía no has guardado ninguna sesión. Sube una carrera o registra fuerza/remo para verlas aquí.</p>;
-              return (
-                <>
-                  <p style={{ fontSize: 13, color: C.ink, marginTop: 8, marginBottom: 16 }}>Últimos 7 días: {counts.Carrera} carrera{counts.Carrera === 1 ? "" : "s"} · {counts.Fuerza} sesión{counts.Fuerza === 1 ? "" : "es"} de fuerza · {counts.Remo} de remo.</p>
-                  <div style={{ border: `1px solid ${C.line}`, borderRadius: 6, overflow: "hidden" }}>
-                    {all.map((x) => (
-                      <div key={x.type + x.id} className="raa-row" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderBottom: `1px dashed ${C.line}`, background: C.surface }}>
-                        <x.Icon size={14} color={C.inkDim} />
-                        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: C.inkDim, minWidth: 58 }}>{new Date(x.date).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}</span>
-                        <span style={{ fontSize: 11, color: C.yellow, minWidth: 58, textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>{x.type}</span>
-                        <span style={{ fontSize: 13, color: C.chalk }}>{x.detail}</span>
-                      </div>
-                    ))}
+            <LapLabel n={1} title="Cómo se combina todo" />
+            {history.length === 0 && strength.length === 0 && rowing.length === 0 ? (
+              <p style={{ fontSize: 13.5, color: C.ink, marginTop: 8 }}>Todavía no has guardado ninguna sesión. Sube una carrera o registra fuerza/remo para empezar a ver el conjunto.</p>
+            ) : (
+              <>
+                <div style={{ background: C.surfaceAlt, borderLeft: `3px solid ${C.red}`, borderRadius: 4, padding: 16, marginTop: 10 }}>
+                  <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, letterSpacing: 1, color: C.red, textTransform: "uppercase", marginBottom: 6 }}>¿Se nota la fuerza y el remo en tu ritmo?</div>
+                  <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.55, color: C.chalk }}>{crossInsight}</p>
+                </div>
+
+                <p style={{ fontSize: 12.5, color: C.ink, marginTop: 22, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1, fontFamily: "'IBM Plex Mono', monospace" }}>Últimas semanas</p>
+                <div style={{ border: `1px solid ${C.line}`, borderRadius: 6, overflow: "hidden" }}>
+                  <div style={{ display: "flex", padding: "8px 12px", background: C.surfaceAlt, fontSize: 10.5, color: C.inkDim, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: 0.5 }}>
+                    <span style={{ minWidth: 90 }}>SEMANA</span><span style={{ flex: 1, textAlign: "center" }}>CARRERA</span><span style={{ flex: 1, textAlign: "center" }}>FUERZA</span><span style={{ flex: 1, textAlign: "center" }}>REMO</span><span style={{ flex: 1.4, textAlign: "right" }}>RITMO MEDIO</span>
                   </div>
-                </>
-              );
-            })()}
+                  {weeklyStats.slice(0, 8).map((w) => (
+                    <div key={w.week} className="raa-row" style={{ display: "flex", alignItems: "center", padding: "9px 12px", borderTop: `1px dashed ${C.line}`, background: C.surface, fontFamily: "'IBM Plex Mono', monospace", fontSize: 12 }}>
+                      <span style={{ minWidth: 90, color: C.inkDim }}>{new Date(w.week + "T00:00:00").toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}</span>
+                      <span style={{ flex: 1, textAlign: "center", color: w.carreras ? C.chalk : C.inkDim }}>{w.carreras || "—"}</span>
+                      <span style={{ flex: 1, textAlign: "center", color: w.fuerza ? C.chalk : C.inkDim }}>{w.fuerza || "—"}</span>
+                      <span style={{ flex: 1, textAlign: "center", color: w.remo ? C.chalk : C.inkDim }}>{w.remo || "—"}</span>
+                      <span style={{ flex: 1.4, textAlign: "right", color: w.avgPace ? C.chalk : C.inkDim }}>{w.avgPace ? secToPace(w.avgPace) + " /km" : "—"}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {strength.length > 0 && (
+                  <>
+                    <p style={{ fontSize: 12.5, color: C.ink, marginTop: 22, marginBottom: 10, textTransform: "uppercase", letterSpacing: 1, fontFamily: "'IBM Plex Mono', monospace" }}>Balance muscular</p>
+                    <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
+                      <BodyDiagram freshness={muscleFreshness} height={190} />
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 200 }}>
+                        {MUSCLE_GROUPS.map((g) => (
+                          <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: C.ink }}>
+                            <span style={{ width: 10, height: 10, borderRadius: 2, background: colorForFreshness(muscleFreshness[g.id]), flexShrink: 0 }} />
+                            {g.label} — {muscleFreshness[g.id] == null ? "nunca trabajado" : muscleFreshness[g.id] === 0 ? "hoy" : `hace ${muscleFreshness[g.id]} día${muscleFreshness[g.id] === 1 ? "" : "s"}`}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                <p style={{ fontSize: 12.5, color: C.ink, marginTop: 22, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1, fontFamily: "'IBM Plex Mono', monospace" }}>Actividad reciente</p>
+                <div style={{ border: `1px solid ${C.line}`, borderRadius: 6, overflow: "hidden" }}>
+                  {[
+                    ...history.map((h) => ({ id: h.id, date: h.date, type: "Carrera", Icon: Ico.Timer, detail: `${h.distanceKm} km · ${secToPace(h.avgPaceSec)} /km` })),
+                    ...strength.map((s) => ({ id: s.id, date: s.date, type: "Fuerza", Icon: Ico.Dumbbell, detail: s.title })),
+                    ...rowing.map((r) => ({ id: r.id, date: r.date, type: "Remo", Icon: Ico.Row, detail: `${r.distanceM} m · ${secToPace(r.pace500)} /500m` })),
+                  ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 15).map((x) => (
+                    <div key={x.type + x.id} className="raa-row" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderBottom: `1px dashed ${C.line}`, background: C.surface }}>
+                      <x.Icon size={14} color={C.inkDim} />
+                      <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: C.inkDim, minWidth: 58 }}>{new Date(x.date).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}</span>
+                      <span style={{ fontSize: 11, color: C.yellow, minWidth: 58, textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>{x.type}</span>
+                      <span style={{ fontSize: 13, color: C.chalk }}>{x.detail}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
 
