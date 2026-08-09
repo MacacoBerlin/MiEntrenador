@@ -822,7 +822,7 @@ function RaceAnalyzer() {
   const [strength, setStrength] = useState([]);
   const [strengthDraft, setStrengthDraft] = useState({ date: new Date().toISOString().slice(0, 10), title: "", notes: "", rpe: "normal", muscles: [] });
   const [rowing, setRowing] = useState([]);
-  const [rowingDraft, setRowingDraft] = useState({ date: new Date().toISOString().slice(0, 10), distanceM: "", timeStr: "", hr: "", notes: "" });
+  const [rowingDraft, setRowingDraft] = useState({ date: new Date().toISOString().slice(0, 10), distanceM: "", timeStr: "", strokes: "", spm: "", calories: "", hr: "", notes: "" });
   const [importMsg, setImportMsg] = useState(null);
   const [goal, setGoal] = useState({ distanceKm: 10, raceDate: "2026-09-20", targetTimeSec: 45 * 60 });
   const [editingGoal, setEditingGoal] = useState(false);
@@ -902,10 +902,18 @@ function RaceAnalyzer() {
   const addRowingEntry = () => {
     const dist = parseFloat(rowingDraft.distanceM);
     const timeSec = parseClockToSec(rowingDraft.timeStr);
-    if (!dist || !timeSec) return;
-    const pace500 = (timeSec / dist) * 500;
-    saveRowingEntry({ id: `row-${Date.now()}`, date: rowingDraft.date, distanceM: dist, timeSec, pace500, hr: rowingDraft.hr ? Number(rowingDraft.hr) : null, notes: rowingDraft.notes.trim() });
-    setRowingDraft({ date: new Date().toISOString().slice(0, 10), distanceM: "", timeStr: "", hr: "", notes: "" });
+    if (!timeSec) return; // el tiempo es el único dato imprescindible
+    const pace500 = dist ? (timeSec / dist) * 500 : null;
+    saveRowingEntry({
+      id: `row-${Date.now()}`, date: rowingDraft.date, timeSec,
+      distanceM: dist || null, pace500,
+      strokes: rowingDraft.strokes ? Number(rowingDraft.strokes) : null,
+      spm: rowingDraft.spm ? Number(rowingDraft.spm) : null,
+      calories: rowingDraft.calories ? Number(rowingDraft.calories) : null,
+      hr: rowingDraft.hr ? Number(rowingDraft.hr) : null,
+      notes: rowingDraft.notes.trim(),
+    });
+    setRowingDraft({ date: new Date().toISOString().slice(0, 10), distanceM: "", timeStr: "", strokes: "", spm: "", calories: "", hr: "", notes: "" });
   };
 
   const exportData = () => {
@@ -1333,14 +1341,19 @@ function RaceAnalyzer() {
         {activeTab === "rowing" && (
           <div className="raa-fade">
             <LapLabel n={1} title="Remo indoor" />
-            <p style={{ fontSize: 13, color: C.ink, marginTop: 8, marginBottom: 16 }}>Registra tus sesiones de remo. Calculamos el ritmo por 500 m automáticamente.</p>
+            <p style={{ fontSize: 13, color: C.ink, marginTop: 8, marginBottom: 16 }}>Si tu monitor no da distancia, no pasa nada: con tiempo, paladas y ritmo de palada (spm/ppm) ya podemos ver tu evolución. La distancia y el ritmo /500m son opcionales, solo si los tienes.</p>
 
             <div style={{ background: C.surfaceAlt, border: `1px solid ${C.line}`, borderRadius: 8, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <label style={{ fontSize: 11, color: C.inkDim }}>Fecha<input type="date" value={rowingDraft.date} onChange={(e) => setRowingDraft({ ...rowingDraft, date: e.target.value })} style={inputStyle} /></label>
-                <label style={{ fontSize: 11, color: C.inkDim }}>Distancia (m)<input type="number" placeholder="2000" value={rowingDraft.distanceM} onChange={(e) => setRowingDraft({ ...rowingDraft, distanceM: e.target.value })} style={inputStyle} /></label>
-                <label style={{ fontSize: 11, color: C.inkDim }}>Tiempo (mm:ss)<input type="text" placeholder="8:15" value={rowingDraft.timeStr} onChange={(e) => setRowingDraft({ ...rowingDraft, timeStr: e.target.value })} style={inputStyle} /></label>
-                <label style={{ fontSize: 11, color: C.inkDim }}>FC media (opcional)<input type="number" placeholder="150" value={rowingDraft.hr} onChange={(e) => setRowingDraft({ ...rowingDraft, hr: e.target.value })} style={inputStyle} /></label>
+                <label style={{ fontSize: 11, color: C.inkDim }}>Tiempo (mm:ss)<input type="text" placeholder="20:02" value={rowingDraft.timeStr} onChange={(e) => setRowingDraft({ ...rowingDraft, timeStr: e.target.value })} style={inputStyle} /></label>
+                <label style={{ fontSize: 11, color: C.inkDim }}>Paladas totales<input type="number" placeholder="860" value={rowingDraft.strokes} onChange={(e) => setRowingDraft({ ...rowingDraft, strokes: e.target.value })} style={inputStyle} /></label>
+                <label style={{ fontSize: 11, color: C.inkDim }}>Ritmo palada (spm)<input type="number" placeholder="42" value={rowingDraft.spm} onChange={(e) => setRowingDraft({ ...rowingDraft, spm: e.target.value })} style={inputStyle} /></label>
+              </div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <label style={{ fontSize: 11, color: C.inkDim }}>Calorías<input type="number" placeholder="103" value={rowingDraft.calories} onChange={(e) => setRowingDraft({ ...rowingDraft, calories: e.target.value })} style={inputStyle} /></label>
+                <label style={{ fontSize: 11, color: C.inkDim }}>FC media<input type="number" placeholder="150" value={rowingDraft.hr} onChange={(e) => setRowingDraft({ ...rowingDraft, hr: e.target.value })} style={inputStyle} /></label>
+                <label style={{ fontSize: 11, color: C.inkDim }}>Distancia en m (si la tienes)<input type="number" placeholder="opcional" value={rowingDraft.distanceM} onChange={(e) => setRowingDraft({ ...rowingDraft, distanceM: e.target.value })} style={inputStyle} /></label>
               </div>
               <label style={{ fontSize: 11, color: C.inkDim }}>Notas (opcional)<input type="text" value={rowingDraft.notes} onChange={(e) => setRowingDraft({ ...rowingDraft, notes: e.target.value })} style={{ ...inputStyle, width: "100%" }} /></label>
               <button onClick={addRowingEntry} style={{ alignSelf: "flex-start", background: C.red, border: "none", color: C.chalk, borderRadius: 6, padding: "8px 14px", fontSize: 12.5, cursor: "pointer" }}>Guardar sesión</button>
@@ -1348,19 +1361,45 @@ function RaceAnalyzer() {
 
             {rowing.length > 0 && (
               <>
-                <div style={{ marginTop: 20 }}>
-                  <LineChartSVG
-                    data={rowing.map((r) => ({ km: new Date(r.date + "T00:00:00").toLocaleDateString("es-ES", { day: "2-digit", month: "short" }), pace500: r.pace500 }))}
-                    yKey="pace500" color={C.good} height={180} formatValue={secToPace} unitPrefix=""
-                  />
-                </div>
-                <div style={{ marginTop: 12, border: `1px solid ${C.line}`, borderRadius: 6, overflow: "hidden" }}>
+                {rowing.some((r) => r.pace500 != null) ? (
+                  <div style={{ marginTop: 20 }}>
+                    <p style={{ fontSize: 12.5, color: C.ink, marginBottom: 4 }}>Ritmo /500m</p>
+                    <LineChartSVG
+                      data={rowing.map((r) => ({ km: new Date(r.date + "T00:00:00").toLocaleDateString("es-ES", { day: "2-digit", month: "short" }), pace500: r.pace500 }))}
+                      yKey="pace500" color={C.good} height={180} formatValue={secToPace} unitPrefix=""
+                    />
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 20, display: "flex", gap: 20, flexWrap: "wrap" }}>
+                    <div style={{ flex: "1 1 240px" }}>
+                      <p style={{ fontSize: 12.5, color: C.ink, marginBottom: 4 }}>Duración por sesión</p>
+                      <LineChartSVG
+                        data={rowing.map((r) => ({ km: new Date(r.date + "T00:00:00").toLocaleDateString("es-ES", { day: "2-digit", month: "short" }), timeSec: r.timeSec }))}
+                        yKey="timeSec" color={C.red} height={160} formatValue={secToHMS} unitPrefix=""
+                      />
+                    </div>
+                    {rowing.some((r) => r.spm != null) && (
+                      <div style={{ flex: "1 1 240px" }}>
+                        <p style={{ fontSize: 12.5, color: C.ink, marginBottom: 4 }}>Ritmo de palada (spm)</p>
+                        <LineChartSVG
+                          data={rowing.map((r) => ({ km: new Date(r.date + "T00:00:00").toLocaleDateString("es-ES", { day: "2-digit", month: "short" }), spm: r.spm }))}
+                          yKey="spm" color={C.good} height={160} formatValue={(v) => Math.round(v)} unitPrefix=""
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div style={{ marginTop: 16, border: `1px solid ${C.line}`, borderRadius: 6, overflow: "hidden" }}>
                   {[...rowing].reverse().map((r) => (
-                    <div key={r.id} className="raa-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", borderBottom: `1px dashed ${C.line}`, background: C.surface, fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, gap: 8, flexWrap: "wrap" }}>
-                      <span style={{ color: C.ink, minWidth: 56 }}>{new Date(r.date + "T00:00:00").toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}</span>
-                      <span style={{ color: C.chalk, minWidth: 60 }}>{r.distanceM} m</span>
-                      <span style={{ color: C.chalk, flex: 1, textAlign: "center" }}>{secToPace(r.pace500)} /500m</span>
-                      <span style={{ color: C.ink, minWidth: 60, textAlign: "center" }}>{r.hr ? `${r.hr} ppm` : "—"}</span>
+                    <div key={r.id} className="raa-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", borderBottom: `1px dashed ${C.line}`, background: C.surface, fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, gap: 6, flexWrap: "wrap" }}>
+                      <span style={{ color: C.ink, minWidth: 52 }}>{new Date(r.date + "T00:00:00").toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}</span>
+                      <span style={{ color: C.chalk, minWidth: 56 }}>{secToHMS(r.timeSec)}</span>
+                      {r.pace500 != null ? (
+                        <span style={{ color: C.chalk, flex: 1, textAlign: "center" }}>{secToPace(r.pace500)} /500m</span>
+                      ) : (
+                        <span style={{ color: C.chalk, flex: 1, textAlign: "center" }}>{r.strokes ? `${r.strokes} paladas` : "—"}{r.spm ? ` · ${r.spm} spm` : ""}</span>
+                      )}
+                      <span style={{ color: C.ink, minWidth: 70, textAlign: "center" }}>{r.hr ? `${r.hr} ppm` : r.calories ? `${r.calories} kcal` : "—"}</span>
                       <button onClick={() => deleteRowingEntry(r.id)} style={{ background: "transparent", border: "none", color: C.inkDim, cursor: "pointer", fontSize: 14, padding: "0 4px" }}>✕</button>
                     </div>
                   ))}
@@ -1420,7 +1459,7 @@ function RaceAnalyzer() {
                   {[
                     ...history.map((h) => ({ id: h.id, date: h.date, type: "Carrera", Icon: Ico.Timer, detail: `${h.distanceKm} km · ${secToPace(h.avgPaceSec)} /km` })),
                     ...strength.map((s) => ({ id: s.id, date: s.date, type: "Fuerza", Icon: Ico.Dumbbell, detail: s.title })),
-                    ...rowing.map((r) => ({ id: r.id, date: r.date, type: "Remo", Icon: Ico.Row, detail: `${r.distanceM} m · ${secToPace(r.pace500)} /500m` })),
+                    ...rowing.map((r) => ({ id: r.id, date: r.date, type: "Remo", Icon: Ico.Row, detail: r.pace500 != null ? `${r.distanceM} m · ${secToPace(r.pace500)} /500m` : `${secToHMS(r.timeSec)}${r.spm ? ` · ${r.spm} spm` : ""}` })),
                   ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 15).map((x) => (
                     <div key={x.type + x.id} className="raa-row" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderBottom: `1px dashed ${C.line}`, background: C.surface }}>
                       <x.Icon size={14} color={C.inkDim} />
